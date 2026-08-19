@@ -217,8 +217,42 @@
       }
       if (!panel) return null;
 
-      const segments = await waitForSegments(panel, PANEL_TIMEOUT);
+      let segments = await waitForSegments(panel, PANEL_TIMEOUT);
       if (!segments || !segments.length) return null;
+
+      // YouTube may virtualise this list, rendering only the rows in view. A
+      // silently truncated transcript is worse than no transcript: it produces a
+      // confident summary of the first minute of a long video. Scroll the list
+      // until it stops growing, then refuse the strategy if it still falls short
+      // of the video's runtime — the video element knows the duration even when
+      // the player response did not.
+      const video = document.querySelector('.html5-main-video, video');
+      const runtime = Number(video && video.duration) || 0;
+      const lastT = (list) => parseTimestamp(list[list.length - 1]?.querySelector('.segment-timestamp')?.textContent) || 0;
+      const scroller =
+        panel.querySelector('#segments-container') ||
+        panel.querySelector('ytd-transcript-segment-list-renderer') ||
+        panel;
+
+      for (let pass = 0; pass < 6; pass++) {
+        if (runtime > 0 && lastT(segments) >= runtime * 0.9) break;
+        const before = segments.length;
+        try {
+          scroller.scrollTop = scroller.scrollHeight;
+          segments[segments.length - 1]?.scrollIntoView({ block: 'end' });
+        } catch {
+          /* not scrollable — then it is not virtualised either */
+        }
+        await sleep(250);
+        segments = panel.querySelectorAll(SEGMENT_SELECTOR);
+        if (segments.length <= before) break; // stopped growing: this is all there is
+      }
+
+      if (runtime > 0 && lastT(segments) < runtime * 0.75) {
+        // Still short. Let the next strategy try rather than shipping a partial
+        // transcript dressed up as the whole video.
+        return null;
+      }
 
       const rows = [];
       for (const seg of segments) {
@@ -353,6 +387,14 @@
       return { meta, tracks, strategy: 'captions' };
     }
 
+    // Order matters. The fallback strategies scrape whatever is in the page right
+    // now — the transcript panel's DOM, ytInitialData — and neither carries proof
+    // of which video it belongs to. After an SPA route change both still hold the
+    // PREVIOUS video for a moment. Only the player response is id-checked, so
+    // until it confirms we are on the requested video, a fallback result could be
+    // the last video's transcript summarised under this video's title.
+    if (!player) throw errored('NO_PLAYER', "Couldn't read this video's player data. Reload the page and try again.");
+
     // No listed tracks. The UI panel sometimes still has a transcript (and it is
     // the same data), so try before declaring the video unsummarisable.
     const fallback = await fallbackCues();
@@ -360,7 +402,6 @@
       return { meta, tracks: [], cues: fallback.cues, strategy: fallback.strategy, lang: '', isAuto: true };
     }
 
-    if (!player) throw errored('NO_PLAYER', "Couldn't read this video's player data. Reload the page and try again.");
     if (d.isLive || d.isLiveContent) {
       throw errored('LIVE', 'This is a live stream, and live streams have no finished caption track yet.');
     }
@@ -406,6 +447,13 @@
     }
 
     if (json3) return { json3, trackInfo, strategy: 'captions' };
+
+    // Same rule as handleTranscript: the fallbacks scrape ungated page state, so
+    // they may only run while the player still confirms this video. A navigation
+    // during the caption fetch would otherwise hand back the next video's panel.
+    if (msg.videoId && !getPlayerResponse(msg.videoId)) {
+      throw errored('NO_PLAYER', 'The page moved to another video while the transcript was loading. Try again.');
+    }
 
     const fallback = await fallbackCues();
     if (fallback) return { cues: fallback.cues, trackInfo, strategy: fallback.strategy };

@@ -690,12 +690,12 @@ html[dark] .vse-textbtn.vse-primary {
 /* Non-fatal note above the summary — currently only "this transcript covers
    part of the video". Reads as information, not as a failure. */
 .vse-notice {
-  margin: 0 0 12px;
+  margin: 14px 16px 0; /* matches .vse-output's inset so it lines up with the text */
   padding: 10px 12px;
   border-radius: 8px;
-  border-left: 3px solid var(--yt-spec-call-to-action, #3ea6ff);
-  background: var(--yt-spec-10-percent-layer, rgba(0, 0, 0, 0.05));
-  color: var(--yt-spec-text-secondary, #606060);
+  border-left: 3px solid var(--vse-accent);
+  background: var(--vse-chip);
+  color: var(--vse-fg-dim);
   font-size: 1.3rem;
   line-height: 1.5;
 }

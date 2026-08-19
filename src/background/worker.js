@@ -540,3 +540,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
+
+// Session storage is trusted-contexts-only by default, so every read and write
+// from the content script would reject and the summary cache would silently
+// fall back to an in-memory map that dies on each page load — exactly the
+// lifetime it exists to survive.
+chrome.storage.session
+  .setAccessLevel({ accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS' })
+  .catch(() => {
+    // Older Chrome without setAccessLevel: the panel's in-memory fallback holds.
+  });

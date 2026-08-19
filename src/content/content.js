@@ -60,14 +60,15 @@
     NO_PLAYER: { title: "Couldn't read the video data", body: 'Reload the page and try again.' },
     PAGE_TIMEOUT: { title: 'The page stopped responding', body: 'Reload the page and try again.' },
     NO_KEY: { title: 'No API key configured', action: 'options', body: 'Add your provider key in the extension settings.' },
-    BAD_KEY: { title: 'The provider rejected your key', action: 'options', body: 'Check the key in settings.' },
-    RATE_LIMIT: { title: 'Rate limited by the provider', body: 'Wait a moment and run it again.' },
+    // These five are the codes the provider adapters emit verbatim. They are
+    // lowercase on purpose — matching them is what puts the "Open settings"
+    // button under a rejected key, which is the error where it is the whole fix.
+    auth: { title: 'The provider rejected your key', action: 'options', body: 'Check the key in settings.' },
+    rate_limit: { title: 'Rate limited by the provider', body: 'Wait a moment and run it again.' },
+    bad_request: { title: 'The provider rejected the request', body: 'This video may be too long for the selected model.' },
+    model: { title: 'Unknown model', action: 'options', body: 'Pick a different model in settings.' },
+    server: { title: 'The provider is having trouble', body: 'Wait a moment and try again.' },
     NETWORK: { title: "Couldn't reach the provider", body: 'Check your connection and try again.' },
-    TOO_LONG: {
-      title: 'Too long for this model',
-      action: 'options',
-      body: "This transcript exceeds the selected model's context. Pick a larger model in settings.",
-    },
     EMPTY: { title: 'The provider returned nothing', body: 'Run it again — this is usually transient.' },
     DISCONNECTED: { title: 'The extension restarted mid-run', body: 'Chrome shut the background worker down. Run it again.' },
     UNKNOWN: { title: 'Something went wrong', body: 'Try again.' },
@@ -706,11 +707,27 @@
         busyStatus('Summarising…');
       }
     } else if (msg.type === 'render') {
+      if (state.asking) {
+        // An answer streams into its own bubble in the thread. Painting it into
+        // the panel body would wipe the summary the question is about, and a
+        // failed or stopped ask would leave half an answer sitting there.
+        const turn = state.thread[state.thread.length - 1];
+        if (turn && turn.role === 'assistant') {
+          if (typeof msg.text === 'string') turn.content = msg.text;
+          if (typeof msg.html === 'string') turn.html = msg.html;
+          renderThread();
+        }
+        hideStatus();
+        return;
+      }
       if (typeof msg.text === 'string') state.text = msg.text; // cumulative, not a delta
       if (typeof msg.html === 'string') state.html = msg.html;
       if (state.firstPaintPending) {
         state.firstPaintPending = false;
-        clearOutput();
+        // Clear the placeholder text only. clearOutput() would also drop the
+        // partial-transcript notice, which arrives before the first token and
+        // has to stay readable for the whole run.
+        if (el.output) el.output.textContent = '';
         hideStatus();
       }
       paint();
@@ -723,7 +740,21 @@
       // given up on the caption tracks. Our cues supersede that complaint.
       const t = state.transcript;
       if (t && t.cues && (msg.code === 'NO_CAPTIONS' || msg.code === 'TRACK_EMPTY')) return;
+      const wasAsk = state.asking;
       finishRun();
+      if (wasAsk) {
+        // The summary is still the panel's content; report the failure in the
+        // thread instead of replacing what the question was asked about.
+        const open = state.thread[state.thread.length - 1];
+        if (open && open.role === 'assistant') {
+          open.content = msg.message || 'That question failed.';
+          open.html = '';
+        }
+        renderThread();
+        restoreSummaryBody();
+        setStatus('note', msg.message || 'That question failed.');
+        return;
+      }
       renderError(msg.code, msg.message);
     }
   }
@@ -732,6 +763,11 @@
    *  raw json3 (strategy "captions") or with ready-made cues (strategies
    *  "panel"/"innertube"); the worker accepts either. This file parses neither. */
   async function onFetchTrack(msg, runId) {
+    // `begin` and `run` can be posted back to back when we already hold cues;
+    // the worker still answers the `begin` with a fetchTrack. Acting on it would
+    // post a second `run`, and the worker cancels the first — a second paid
+    // request, and a panel stuck on the aborted run's partial text.
+    if (state.runPosted) return;
     const videoId = state.videoId;
     const cached = state.transcript;
     try {
@@ -739,7 +775,14 @@
       if (cached && cached.videoId === videoId && cached.baseUrl === msg.baseUrl && (cached.json3 || cached.cues)) {
         payload = cached; // already downloaded for this video — no second network trip
       } else {
-        const res = await pageCall('fetchTrack', { baseUrl: msg.baseUrl, trackInfo: msg.trackInfo });
+        // 40s, not the default 20s: inject's own worst case is 15s timedtext
+        // plus the panel and innertube fallbacks, and aborting at 20s throws
+        // away a strategy chain that was still working.
+        const res = await pageCall(
+          'fetchTrack',
+          { baseUrl: msg.baseUrl, trackInfo: msg.trackInfo, videoId: state.videoId },
+          40000
+        );
         payload = {
           videoId,
           baseUrl: msg.baseUrl,
@@ -752,6 +795,7 @@
       }
       if (!fresh(runId)) return;
       busyStatus('Summarising…');
+      state.runPosted = true;
       post(runMessage(payload));
     } catch (err) {
       if (!fresh(runId)) return;
@@ -762,8 +806,8 @@
 
   const runMessage = (t) =>
     t.cues
-      ? { type: 'run', cues: t.cues, strategy: t.strategy || 'panel', trackInfo: t.trackInfo || null, mode: state.mode }
-      : { type: 'run', json3: t.json3, trackInfo: t.trackInfo || null, strategy: 'captions', mode: state.mode };
+      ? { type: 'run', cues: t.cues, strategy: t.strategy || 'panel', trackInfo: t.trackInfo || null, mode: state.runMode }
+      : { type: 'run', json3: t.json3, trackInfo: t.trackInfo || null, strategy: 'captions', mode: state.runMode };
 
   function onDone(msg, runId) {
     if (typeof msg.text === 'string') state.text = msg.text;
@@ -778,7 +822,13 @@
     }
     if (wasAsk) {
       const answer = msg.answer || msg.text || '';
-      state.thread.push({ role: 'assistant', content: answer, html: msg.html || '' });
+      const open = state.thread[state.thread.length - 1];
+      if (open && open.role === 'assistant') {
+        open.content = answer;
+        open.html = msg.html || '';
+      } else {
+        state.thread.push({ role: 'assistant', content: answer, html: msg.html || '' });
+      }
       renderThread();
       // The panel body keeps the summary; the answer lives in the thread.
       restoreSummaryBody();
@@ -792,7 +842,7 @@
     paint();
     hideStatus();
     state.summarisedFor = state.videoId;
-    cacheSet(state.videoId, state.mode, { html: state.html, text: state.text, ts: Date.now() });
+    cacheSet(state.videoId, state.runMode || state.mode, { html: state.html, text: state.text, ts: Date.now() });
   }
 
   function restoreSummaryBody() {
@@ -842,6 +892,11 @@
     const runId = ++state.runSeq;
     state.running = true;
     state.runVideoId = videoId;
+    state.runPosted = false;
+    // Fixed for the whole run. `state.mode` can change under a streaming run
+    // when the user opens the mode menu, which would cache the result under the
+    // wrong mode and disagree with what was actually requested.
+    state.runMode = state.mode;
     state.asking = false;
     state.html = '';
     state.text = '';
@@ -887,6 +942,7 @@
       // Nothing left to fetch — a re-run with a different mode, or cues the page
       // scraped without any caption track to choose from.
       busyStatus('Summarising…');
+      state.runPosted = true;
       post(runMessage(t));
     }
     // Otherwise: wait for the worker's 'fetchTrack' reply.
@@ -908,9 +964,18 @@
         /* already gone */
       }
     }
+    const wasAsking = state.asking;
     state.runSeq += 1; // invalidates every in-flight guard
     finishRun();
     hideStatus();
+    if (wasAsking) {
+      // Drop the half-streamed answer bubble and put the summary back.
+      const open = state.thread[state.thread.length - 1];
+      if (open && open.role === 'assistant' && !open.content) state.thread.pop();
+      renderThread();
+      restoreSummaryBody();
+      return;
+    }
     if (!state.html && !state.text) renderIdle();
   }
 
@@ -941,6 +1006,7 @@
     el.input.value = '';
     state.summaryView = { html: state.html, text: state.text };
     state.thread.push({ role: 'user', content: q });
+    state.thread.push({ role: 'assistant', content: '', html: '' }); // streams into this
     renderThread();
 
     state.runSeq += 1;
