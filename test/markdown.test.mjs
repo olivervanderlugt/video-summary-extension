@@ -120,3 +120,18 @@ test('empty and non-string input render to nothing', () => {
   assert.equal(renderMarkdown(undefined), '');
   assert.equal(linkifyTimestamps(null), '');
 });
+
+test('a wrapped bullet stays inside its list item', () => {
+  // Models wrap long bullets. Before this was handled, the continuation line
+  // escaped the <ul> and rendered as a loose paragraph under the list.
+  const html = renderMarkdown('- [0:20] Weights decide the pattern; the bias decides how\n  much evidence it needs.\n- [0:32] Next point.');
+  assert.equal((html.match(/<li>/g) || []).length, 2);
+  assert.equal((html.match(/<p>/g) || []).length, 0);
+  assert.match(html, /much evidence it needs\.<\/li>/);
+});
+
+test('a paragraph after a blank line still ends the list', () => {
+  const html = renderMarkdown('- one\n- two\n\nA new paragraph.');
+  assert.match(html, /<\/ul>/);
+  assert.match(html, /<p>A new paragraph\.<\/p>/);
+});

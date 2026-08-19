@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en" dark>
+  <head>
+    <meta charset="utf-8" />
+    <title>Video Summary — dev harness</title>
+    <link rel="stylesheet" href="/src/content/panel.css" />
+    <style>
+      /* A stand-in for YouTube's watch page: the same ids and structure the
+         content script mounts into, and nothing else. */
+      :root {
+        --yt-spec-text-primary: #f1f1f1;
+        --yt-spec-text-secondary: #aaa;
+        --yt-spec-base-background: #0f0f0f;
+        --yt-spec-badge-chip-background: rgba(255, 255, 255, 0.1);
+        --yt-spec-10-percent-layer: rgba(255, 255, 255, 0.1);
+        --yt-spec-call-to-action: #3ea6ff;
+        font-size: 10px; /* YouTube's root size — the panel's rem values assume it */
+      }
+      body {
+        margin: 0;
+        background: #0f0f0f;
+        color: #f1f1f1;
+        font: 14px/1.4 Roboto, Arial, sans-serif;
+      }
+      #columns { display: flex; gap: 24px; padding: 24px; align-items: flex-start; }
+      #primary { flex: 1 1 auto; max-width: 1280px; }
+      #secondary { flex: 0 0 402px; }
+      #movie_player { background: #000; aspect-ratio: 16/9; display: grid; place-items: center; }
+      #top-level-buttons-computed { display: flex; gap: 8px; margin: 12px 0; }
+      .fake-btn {
+        background: rgba(255, 255, 255, 0.1);
+        border: 0; color: #f1f1f1; border-radius: 18px;
+        padding: 0 16px; height: 36px; font-size: 14px;
+      }
+      #harness-bar {
+        position: sticky; top: 0; z-index: 99;
+        background: #202020; padding: 8px 24px; font-size: 12px;
+        display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+      }
+      #harness-bar button { font-size: 12px; }
+      #harness-out { font-family: ui-monospace, monospace; color: #7ee787; }
+    </style>
+  </head>
+  <body>
+    <div id="harness-bar">
+      <strong>harness</strong>
+      <button id="h-nav">simulate navigation to another video</button>
+      <button id="h-notracks">next run: no caption tracks</button>
+      <span id="harness-out">ready</span>
+    </div>
+
+    <div id="columns">
+      <div id="primary">
+        <div id="movie_player"><video id="fake-video"></video><span>player</span></div>
+        <h1 id="title">But what is a neural network? | Deep learning chapter 1</h1>
+        <div id="actions">
+          <div id="actions-inner">
+            <ytd-menu-renderer>
+              <div id="top-level-buttons-computed">
+                <button class="fake-btn">Like</button>
+                <button class="fake-btn">Share</button>
+              </div>
+            </ytd-menu-renderer>
+          </div>
+        </div>
+        <div id="description-inline-expander"><button id="expand">…more</button></div>
+      </div>
+      <div id="secondary"><div id="secondary-inner"><p>recommendations would be here</p></div></div>
+    </div>
+
+    <script type="module">
+      import { installChromeShim } from '/dev/mock-worker.js';
+
+      // ---- the page state inject.js reads -------------------------------
+      let videoId = 'aircAruvnKk';
+      let withTracks = true;
+
+      const CAPTION_URL = new URL('/dev/captions.json3.json', location.origin).toString();
+      const playerResponse = () => ({
+        videoDetails: {
+          videoId,
+          title:
+            videoId === 'aircAruvnKk'
+              ? 'But what is a neural network? | Deep learning chapter 1'
+              : 'A completely different video',
+          author: '3Blue1Brown',
+          lengthSeconds: '40',
+        },
+        captions: withTracks
+          ? {
+              playerCaptionsTracklistRenderer: {
+                captionTracks: [
+                  {
+                    baseUrl: CAPTION_URL,
+                    languageCode: 'en',
+                    name: { simpleText: 'English' },
+                    vssId: '.en',
+                  },
+                ],
+              },
+            }
+          : undefined,
+        playerOverlays: {
+          decoratedPlayerBarRenderer: {
+            decoratedPlayerBarRenderer: {
+              playerBar: {
+                multiMarkersPlayerBarRenderer: {
+                  markersMap: [
+                    {
+                      key: 'DESCRIPTION_CHAPTERS',
+                      value: {
+                        chapters: [
+                          { chapterRenderer: { title: { simpleText: 'Intro' }, timeRangeStartMillis: 0 } },
+                          { chapterRenderer: { title: { simpleText: 'Layers' }, timeRangeStartMillis: 16000 } },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        },
+      });
+
+      const player = document.getElementById('movie_player');
+      player.getPlayerResponse = playerResponse;
+      window.ytInitialPlayerResponse = playerResponse();
+
+      // The <video> has no source, so currentTime would silently stay 0. Record
+      // what the seek path actually asks for instead.
+      const video = document.getElementById('fake-video');
+      let seekedTo = null;
+      Object.defineProperty(video, 'currentTime', {
+        get: () => seekedTo || 0,
+        set: (v) => {
+          seekedTo = v;
+          out(`seek → ${v}s`);
+        },
+      });
+      Object.defineProperty(video, 'duration', { get: () => 40 });
+      Object.defineProperty(video, 'paused', { get: () => true });
+      window.__harnessSeek = () => seekedTo;
+
+      const out = (msg) => {
+        document.getElementById('harness-out').textContent = msg;
+        console.log('[harness]', msg);
+      };
+
+      // ---- controls ------------------------------------------------------
+      document.getElementById('h-nav').addEventListener('click', () => {
+        videoId = videoId === 'aircAruvnKk' ? 'dQw4w9WgXcQ' : 'aircAruvnKk';
+        window.ytInitialPlayerResponse = playerResponse();
+        history.pushState({}, '', `?v=${videoId}`);
+        window.dispatchEvent(new CustomEvent('yt-navigate-finish'));
+        out(`navigated to ${videoId}`);
+      });
+      document.getElementById('h-notracks').addEventListener('click', () => {
+        withTracks = !withTracks;
+        window.ytInitialPlayerResponse = playerResponse();
+        out(`caption tracks: ${withTracks ? 'on' : 'off'}`);
+      });
+
+      // ---- boot the real scripts, shim first ------------------------------
+      installChromeShim({ autoRun: false, defaultMode: 'detailed' });
+      history.replaceState({}, '', `?v=${videoId}`);
+
+      for (const src of ['/src/content/inject.js', '/src/content/content.js']) {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script');
+          s.src = src;
+          s.onload = resolve;
+          s.onerror = reject;
+          document.head.appendChild(s);
+        });
+      }
+      out('scripts loaded');
+    </script>
+  </body>
+</html>

@@ -88,6 +88,15 @@ export function renderMarkdown(text) {
       continue;
     }
 
+    // Lazy continuation: a plain line while a list is open belongs to the item
+    // above it. Models wrap long bullets constantly, and without this every
+    // wrapped bullet breaks out of the list as a stray paragraph.
+    if (lists.length && out.length && out[out.length - 1].endsWith('</li>')) {
+      const prev = out[out.length - 1];
+      out[out.length - 1] = `${prev.slice(0, -5)} ${inline(line.trim())}</li>`;
+      continue;
+    }
+
     closeLists();
     para.push(line.trim());
   }

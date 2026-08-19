@@ -9,7 +9,9 @@ timestamp in the summary is a link that seeks the player**. A chatbot can tell
 you the interesting part is somewhere around eighteen minutes in. This puts you
 there.
 
-![Screenshot placeholder — the summary panel open beside a video](docs/screenshot.png)
+![The summary panel open beside a video, timestamps rendered as seek buttons](docs/screenshot.png)
+
+<sub>Screenshot from `dev/harness.html` — the offline development harness, not a live YouTube page.</sub>
 
 ## Install
 
@@ -198,3 +200,24 @@ to survive being 16 pixels wide in a toolbar.
 ## Licence
 
 MIT.
+
+## Development harness
+
+`src/content/content.js` and `src/content/inject.js` need a browser, so they
+cannot be unit tested. `dev/` provides a fake watch page that mounts the real
+content scripts against a real caption fixture, with a stand-in worker that runs
+the real transcript, prompt and markdown modules and only fakes the provider
+request.
+
+```sh
+python3 dev/serve.py            # then open http://localhost:8777/watch?v=aircAruvnKk
+```
+
+The page has controls for the cases that are awkward to reach on YouTube:
+simulating an SPA navigation to another video, and serving a video with no
+caption tracks. `window.__harnessPace = 30` slows the fake stream down so you
+can catch it mid-flight and press Stop.
+
+It is a development tool, not a test suite — it does not assert, it lets you
+look. The assertions live in `test/`, and the browser-only checks live in
+[docs/manual-qa.md](docs/manual-qa.md).

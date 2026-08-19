@@ -434,7 +434,8 @@
         // Nothing but YouTube's own caption hosts should ever be fetched here,
         // and pinning it now means the day this moves into the isolated world
         // it does not arrive with host permissions behind it.
-        if (!/(^|\.)(youtube\.com|googlevideo\.com|youtube-nocookie\.com)$/.test(url.hostname)) {
+        const ownOrigin = url.origin === location.origin;
+        if (!ownOrigin && !/(^|\.)(youtube\.com|googlevideo\.com|youtube-nocookie\.com)$/.test(url.hostname)) {
           throw new Error('caption URL is not a YouTube host');
         }
         url.searchParams.set('fmt', 'json3');
