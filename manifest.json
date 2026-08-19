@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "description": "AI summaries of YouTube videos with clickable timestamps, using your own API key.",
   "permissions": ["storage"],
+  "externally_connectable": { "ids": [], "matches": [] },
   "host_permissions": [
     "https://api.anthropic.com/*",
     "https://api.openai.com/*",

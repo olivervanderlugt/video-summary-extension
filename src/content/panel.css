@@ -686,3 +686,16 @@ html[dark] .vse-textbtn.vse-primary {
     padding: 0 10px;
   }
 }
+
+/* Non-fatal note above the summary — currently only "this transcript covers
+   part of the video". Reads as information, not as a failure. */
+.vse-notice {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border-left: 3px solid var(--yt-spec-call-to-action, #3ea6ff);
+  background: var(--yt-spec-10-percent-layer, rgba(0, 0, 0, 0.05));
+  color: var(--yt-spec-text-secondary, #606060);
+  font-size: 1.3rem;
+  line-height: 1.5;
+}

@@ -181,7 +181,11 @@
 
   function pageCall(type, extra, timeoutMs) {
     return new Promise((resolve, reject) => {
-      const reqId = `vse-${Date.now()}-${++reqSeq}`;
+      // Unguessable, so a page script cannot answer blind. It can still read
+      // the outgoing request off the shared window and race a reply, so the
+      // transcript this channel returns is treated as page-controlled either
+      // way — it is wrapped as untrusted data before the model ever sees it.
+      const reqId = `vse-${(self.crypto?.randomUUID?.() || `${Date.now()}-${++reqSeq}`)}`;
       let done = false;
       const finish = (fn, arg) => {
         if (done) return;
@@ -556,6 +560,7 @@
   function clearOutput() {
     if (!el.output) return;
     el.output.textContent = '';
+    el.output.parentNode?.querySelector('.vse-notice')?.remove();
   }
 
   function setStatus(kind, text, extras) {
@@ -585,6 +590,22 @@
       wrap.appendChild(line);
     }
     el.output.appendChild(wrap);
+  }
+
+  /**
+   * A non-fatal note that sits above the summary. Unlike an error it must not
+   * clear the output: the partial-transcript warning arrives before the first
+   * token and has to survive the whole stream.
+   */
+  function renderNotice(message) {
+    if (!message || !el.output) return;
+    let box = el.output.parentNode.querySelector('.vse-notice');
+    if (!box) {
+      box = node('div', 'vse-notice');
+      box.setAttribute('role', 'note');
+      el.output.parentNode.insertBefore(box, el.output);
+    }
+    box.textContent = message;
   }
 
   function renderError(code, message) {
@@ -693,6 +714,8 @@
         hideStatus();
       }
       paint();
+    } else if (msg.type === 'warning') {
+      renderNotice(msg.message);
     } else if (msg.type === 'done') {
       onDone(msg, runId);
     } else if (msg.type === 'error') {

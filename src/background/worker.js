@@ -50,6 +50,16 @@ function activeModel(settings, adapter) {
   return (settings.model || '').trim() || adapter.defaultModel;
 }
 
+/**
+ * A custom base URL belongs to the OpenAI-compatible provider and to nothing
+ * else. `baseUrl` is one stored field, so a URL left behind from a session with
+ * a local proxy would otherwise be handed the user's real Anthropic or OpenAI
+ * key on the next summary. Read it only when the active adapter asks for one.
+ */
+function activeBaseUrl(settings, adapter) {
+  return adapter.requiresBaseUrl ? (settings.baseUrl || '').trim() : '';
+}
+
 class AppError extends Error {
   constructor(code, message) {
     super(message);
@@ -87,7 +97,7 @@ async function* streamCompletion({ settings, adapter, system, messages, signal }
   const { url, headers, body } = adapter.buildRequest({
     key,
     model: activeModel(settings, adapter),
-    baseUrl: settings.baseUrl,
+    baseUrl: activeBaseUrl(settings, adapter),
     system,
     messages,
     maxTokens: Number(settings.maxTokens) || DEFAULTS.maxTokens,
@@ -451,7 +461,10 @@ async function listModels(settings) {
   const key = activeKey(settings);
   if (!key) return { ok: false, code: 'NO_KEY', message: 'Add an API key first.' };
 
-  const { url, headers } = adapter.buildModelsRequest({ key, baseUrl: settings.baseUrl });
+  const { url, headers } = adapter.buildModelsRequest({
+    key,
+    baseUrl: activeBaseUrl(settings, adapter),
+  });
   let response;
   try {
     response = await fetch(url, { headers });
@@ -471,19 +484,29 @@ async function listModels(settings) {
   return { ok: true, models };
 }
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // Only this extension's own pages and content scripts may ask. Without this,
+  // any other installed extension can call getSettings or point listModels at
+  // a host of its choosing and have the worker attach the user's real key.
+  if (sender.id !== chrome.runtime.id) return false;
+
   (async () => {
     switch (msg?.type) {
-      case 'getSettings':
-        sendResponse(await loadSettings());
+      case 'getSettings': {
+        // The content script runs on youtube.com and needs none of the secrets.
+        // Hand it the two fields it actually uses and nothing else.
+        const s = await loadSettings();
+        sendResponse({ autoRun: s.autoRun, defaultMode: s.defaultMode, lang: s.lang });
         return;
+      }
       case 'listModels': {
-        const settings = { ...(await loadSettings()), ...(msg.settings || {}) };
-        sendResponse(await listModels(settings));
+        // Settings come from storage, never from the message: a caller-supplied
+        // baseUrl would redirect a request that carries the stored key.
+        sendResponse(await listModels(await loadSettings()));
         return;
       }
       case 'testKey': {
-        const settings = { ...(await loadSettings()), ...(msg.settings || {}) };
+        const settings = await loadSettings();
         const result = await listModels(settings);
         sendResponse(
           result.ok

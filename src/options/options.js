@@ -51,6 +51,8 @@ const el = {
 };
 
 let settings = { ...DEFAULTS };
+// Origin the stored base URL currently holds a host permission for.
+let grantedOrigin = null;
 
 /* ---------- helpers ---------- */
 
@@ -107,6 +109,13 @@ async function load() {
   const stored = await chrome.storage.local.get('settings');
   const s = stored && stored.settings ? stored.settings : {};
   settings = { ...DEFAULTS, ...s, keys: { ...DEFAULTS.keys, ...(s.keys || {}) } };
+  // Remember which origin the stored base URL already holds a grant for, so
+  // changing it later hands that grant back instead of leaving it live.
+  try {
+    grantedOrigin = settings.baseUrl ? new URL(settings.baseUrl).origin : null;
+  } catch {
+    grantedOrigin = null;
+  }
   if (!PROVIDERS[settings.provider]) settings.provider = DEFAULTS.provider;
 }
 
@@ -226,7 +235,10 @@ async function refreshModels({ silent } = {}) {
   const selected = settings.model || p.defaultModel || '';
   if (!silent) say(el.modelMsg, 'Loading models…', 'busy');
 
-  const res = await ask({ type: 'listModels', settings });
+  // The worker reads settings from storage, never from the message, so what is
+  // on screen has to be persisted before asking.
+  await save();
+  const res = await ask({ type: 'listModels' });
   if (res && res.ok && Array.isArray(res.models) && res.models.length) {
     renderModelOptions(res.models, selected);
     say(el.modelMsg, `${res.models.length} models available.`, 'ok');
@@ -266,8 +278,26 @@ function validateBaseUrl() {
   return r.origin;
 }
 
+/**
+ * Hand back the permission for an origin the user has moved away from. A grant
+ * outlives the setting that asked for it, so without this a base URL typed once
+ * stays a permitted destination forever.
+ */
+async function releaseOrigin(origin) {
+  if (!origin) return;
+  const pattern = origin.replace(/\/+$/, '') + '/*';
+  try {
+    await chrome.permissions.remove({ origins: [pattern] });
+  } catch {
+    // Not granted, or not removable (it is one of the manifest's own). Fine.
+  }
+}
+
 async function requestOrigin(origin) {
   const pattern = origin.replace(/\/+$/, '') + '/*';
+  // Drop the previous grant first; the user is pointing somewhere else now.
+  if (grantedOrigin && grantedOrigin !== origin) await releaseOrigin(grantedOrigin);
+  grantedOrigin = origin;
   let granted = false;
   try {
     granted = await chrome.permissions.request({ origins: [pattern] });
@@ -307,7 +337,7 @@ function wire() {
     await save();
     el.testBtn.disabled = true;
     say(el.testResult, 'Testing…', 'busy');
-    const res = await ask({ type: 'testKey', settings });
+    const res = await ask({ type: 'testKey' });
     el.testBtn.disabled = false;
     if (res && res.ok) {
       const n = Array.isArray(res.models) ? res.models.length : null;

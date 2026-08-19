@@ -137,7 +137,18 @@ export function parseTimestamp(str) {
 
 /** Strip anything that could close (or open) the trust-boundary block. */
 export function stripDelimiters(text) {
-  return String(text == null ? '' : text).replace(DELIM_RE, '');
+  // One pass is not enough: deleting a match splices its neighbours together
+  // and can form a fresh delimiter. `</<transcript>transcript>` collapses to a
+  // working `</transcript>` after a single replace, which is exactly how a
+  // crafted caption would close the trust block and start giving instructions.
+  // Repeat until the text stops changing.
+  let out = String(text ?? '');
+  let previous;
+  do {
+    previous = out;
+    out = out.replace(DELIM_RE, '');
+  } while (out !== previous);
+  return out;
 }
 
 /**

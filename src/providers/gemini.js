@@ -25,7 +25,9 @@ export function buildRequest({ key, model, baseUrl, system, messages, maxTokens 
   };
   if (system) body.system_instruction = { parts: [{ text: system }] };
   return {
-    url: `${base(baseUrl)}/models/${model || defaultModel}:streamGenerateContent?alt=sse`,
+    // encoded: the model name lands in the URL path, so a stray `../` in it
+    // would otherwise reshape the request target.
+    url: `${base(baseUrl)}/models/${encodeURIComponent(model || defaultModel)}:streamGenerateContent?alt=sse`,
     headers: { 'content-type': 'application/json', ...authHeaders(key) },
     body: JSON.stringify(body),
   };
