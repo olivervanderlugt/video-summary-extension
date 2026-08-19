@@ -195,7 +195,7 @@
    * Opens YouTube's transcript panel, reads it, and puts the UI back the way the
    * user left it. Returns cues or null — never throws into the caller's face.
    */
-  async function strategyPanel() {
+  async function strategyPanel(runtimeHint) {
     let panel = document.querySelector(PANEL_SELECTOR);
     const wasVisible = panel ? panel.getAttribute('visibility') : null;
     const openedByUs = !panel || (wasVisible || '').indexOf('HIDDEN') !== -1 || wasVisible === null;
@@ -230,8 +230,12 @@
       // until it stops growing, then refuse the strategy if it still falls short
       // of the video's runtime — the video element knows the duration even when
       // the player response did not.
+      // The video element is the better source — it is right even when the
+      // player response was unreadable — but `duration` is NaN until metadata
+      // loads, so fall back to the runtime the caller already knows.
       const video = document.querySelector('.html5-main-video, video');
-      const runtime = Number(video && video.duration) || 0;
+      const fromElement = Number(video && video.duration);
+      const runtime = Number.isFinite(fromElement) && fromElement > 0 ? fromElement : Number(runtimeHint) || 0;
       const lastT = (list) => parseTimestamp(list[list.length - 1]?.querySelector('.segment-timestamp')?.textContent) || 0;
       const scroller =
         panel.querySelector('#segments-container') ||
@@ -349,8 +353,8 @@
   }
 
   /** B then C. Returns { cues, strategy } or null. */
-  async function fallbackCues() {
-    const panel = await strategyPanel();
+  async function fallbackCues(runtimeHint) {
+    const panel = await strategyPanel(runtimeHint);
     if (panel) return { cues: panel, strategy: 'panel' };
     const innertube = await strategyInnertube();
     if (innertube) return { cues: innertube, strategy: 'innertube' };
@@ -401,7 +405,7 @@
 
     // No listed tracks. The UI panel sometimes still has a transcript (and it is
     // the same data), so try before declaring the video unsummarisable.
-    const fallback = await fallbackCues();
+    const fallback = await fallbackCues(meta.duration);
     if (fallback) {
       return { meta, tracks: [], cues: fallback.cues, strategy: fallback.strategy, lang: '', isAuto: true };
     }
@@ -459,7 +463,7 @@
       throw errored('NO_PLAYER', 'The page moved to another video while the transcript was loading. Try again.');
     }
 
-    const fallback = await fallbackCues();
+    const fallback = await fallbackCues(Number(msg.duration) || 0);
     if (fallback) return { cues: fallback.cues, trackInfo, strategy: fallback.strategy };
 
     // Tracks exist but nothing would serve their text. That is session/profile

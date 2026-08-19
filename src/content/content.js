@@ -672,7 +672,12 @@
         // away a strategy chain that was still working.
         const res = await pageCall(
           'fetchTrack',
-          { baseUrl: msg.baseUrl, trackInfo: msg.trackInfo, videoId: state.videoId },
+          {
+            baseUrl: msg.baseUrl,
+            trackInfo: msg.trackInfo,
+            videoId: state.videoId,
+            duration: state.transcript?.meta?.duration || 0,
+          },
           40000
         );
         payload = {
@@ -813,6 +818,9 @@
     if (Array.isArray(head.cues) && head.cues.length) {
       t.cues = head.cues;
     }
+    // Kept so the fetchTrack round trip can tell the page how long the video is:
+    // the <video> element's own duration is NaN until its metadata loads.
+    if (head.meta) t.meta = head.meta;
     state.transcript = t;
 
     const port = ensurePort();
