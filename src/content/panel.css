@@ -168,19 +168,12 @@ html[dark] .vse-button,
   display: block;
 }
 
-/* --------------------------------------------------------- mode popover */
+/* ----------------------------------------------------------- mode select */
 
-.vse-modewrap {
-  position: relative;
-}
-
-.vse-modebtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
+.vse-modeselect {
   height: 28px;
-  padding: 0 4px 0 10px;
-  border: none;
+  padding: 0 4px;
+  border: 1px solid var(--vse-layer);
   border-radius: 14px;
   background: transparent;
   color: var(--vse-fg-dim);
@@ -190,69 +183,9 @@ html[dark] .vse-button,
   cursor: pointer;
 }
 
-.vse-modebtn:hover {
+.vse-modeselect:hover {
   background: var(--vse-chip);
   color: var(--vse-fg);
-}
-
-.vse-modebtn .vse-icon {
-  width: 16px;
-  height: 16px;
-}
-
-.vse-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 2200;
-  min-width: 200px;
-  padding: 6px;
-  border: 1px solid var(--vse-layer);
-  border-radius: 10px;
-  background: var(--vse-bg);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
-}
-
-.vse-menu[hidden] {
-  display: none;
-}
-
-.vse-menuitem {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
-  width: 100%;
-  padding: 7px 10px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--vse-fg);
-  font-family: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.vse-menuitem:hover {
-  background: var(--vse-chip);
-}
-
-.vse-menuitem[aria-checked='true'] {
-  background: var(--vse-chip);
-}
-
-.vse-menuitem[aria-checked='true'] .vse-menuitem-label {
-  color: var(--vse-accent);
-}
-
-.vse-menuitem-label {
-  font-size: 1.4rem;
-  font-weight: 500;
-}
-
-.vse-menuitem-hint {
-  font-size: 1.2rem;
-  color: var(--vse-fg-dim);
 }
 
 /* ------------------------------------------------------------------ status */
@@ -463,35 +396,6 @@ html[dark] .vse-textbtn.vse-primary {
   color: #fff;
 }
 
-/* ---------------------------------------------------------------- skeleton */
-
-.vse-skeleton {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 4px 0;
-}
-
-.vse-skeleton-line {
-  height: 12px;
-  border-radius: 6px;
-  background: var(--vse-chip);
-  animation: vse-pulse 1.4s ease-in-out infinite;
-}
-
-.vse-skeleton-line:nth-child(2) {
-  animation-delay: 0.1s;
-}
-.vse-skeleton-line:nth-child(3) {
-  animation-delay: 0.2s;
-}
-.vse-skeleton-line:nth-child(4) {
-  animation-delay: 0.3s;
-}
-.vse-skeleton-line:nth-child(5) {
-  animation-delay: 0.4s;
-}
-
 /* ------------------------------------------------------------ idle + error */
 
 .vse-idle {
@@ -646,9 +550,6 @@ html[dark] .vse-textbtn.vse-primary {
     animation: none !important;
     transition: none !important;
   }
-  .vse-skeleton-line {
-    opacity: 0.6;
-  }
 }
 
 /* ------------------------------------------------------------- narrow ---- */
@@ -666,12 +567,6 @@ html[dark] .vse-textbtn.vse-primary {
   }
   .vse-title {
     font-size: 1.5rem;
-  }
-  .vse-modebtn-label {
-    display: none; /* the chevron alone still opens the style menu */
-  }
-  .vse-modebtn {
-    padding: 0 6px;
   }
   .vse-body {
     max-height: 50vh;

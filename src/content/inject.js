@@ -141,7 +141,11 @@
   // reliable signal, so text matching is only used to find the button that opens it.
   const TRANSCRIPT_WORD = /transcript|transkript|transcrip|字幕|文字起こし|стенограмм|транскрип/i;
 
-  /** "1:23" / "12:34:56" / "-0:05" → seconds. */
+  /** "1:23" / "12:34:56" / "-0:05" → seconds.
+   *  Deliberate twin of parseTimestamp in src/lib/transcript.js — do NOT "unify"
+   *  them: this file is a world:MAIN classic script with no build step so it
+   *  cannot import the ESM lib, and it returns NaN (not the lib's 0) so callers
+   *  drop an unparseable row instead of inventing a cue at t=0. */
   function parseTimestamp(raw) {
     const s = String(raw || '').trim();
     if (!s) return NaN;

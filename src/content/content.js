@@ -147,7 +147,6 @@
     ],
     chat: ['M20 12a7 7 0 01-7 7H8.5L4.5 22v-4.2A7 7 0 019 5h4a7 7 0 017 7z'],
     close: ['M6.5 6.5l11 11', 'M17.5 6.5l-11 11'],
-    chevron: ['M7 10l5 5 5-5'],
     send: ['M4.5 12l15-7.5-5.6 15-2.4-5.6z'],
   };
 
@@ -217,31 +216,9 @@
 
   // --------------------------------------------------- worker one-shots
 
-  function sendMessage(msg, timeoutMs) {
-    if (!alive()) return Promise.reject(mkError('DISCONNECTED', 'Extension reloaded.'));
-    return new Promise((resolve, reject) => {
-      let done = false;
-      const timer = setTimeout(() => {
-        if (done) return;
-        done = true;
-        reject(mkError('PAGE_TIMEOUT', 'The extension did not respond.'));
-      }, timeoutMs || 8000);
-      try {
-        chrome.runtime.sendMessage(msg, (res) => {
-          if (done) return;
-          done = true;
-          clearTimeout(timer);
-          if (chrome.runtime.lastError) reject(mkError('DISCONNECTED', chrome.runtime.lastError.message));
-          else resolve(res);
-        });
-      } catch {
-        if (done) return;
-        done = true;
-        clearTimeout(timer);
-        reject(mkError('DISCONNECTED', 'Extension reloaded.'));
-      }
-    });
-  }
+  // MV3 returns a promise; both callers swallow errors, so the throw when the
+  // worker is gone needs no wrapping.
+  const sendMessage = (msg) => chrome.runtime.sendMessage(msg);
 
   const openOptions = () => sendMessage({ type: 'openOptions' }).catch(() => {});
 
@@ -305,18 +282,16 @@
 
     const actions = node('div', 'vse-header-actions');
 
-    const modeBtn = node('button', 'vse-modebtn');
-    modeBtn.type = 'button';
-    modeBtn.setAttribute('aria-haspopup', 'true');
-    modeBtn.setAttribute('aria-expanded', 'false');
-    modeBtn.setAttribute('aria-label', 'Summary style');
-    modeBtn.appendChild(node('span', 'vse-modebtn-label', labelFor(state.mode)));
-    modeBtn.appendChild(icon(ICONS.chevron));
-    modeBtn.addEventListener('click', toggleModeMenu);
-
-    const menu = buildModeMenu();
-    const modeWrap = node('div', 'vse-modewrap');
-    modeWrap.append(modeBtn, menu);
+    const modeSelect = node('select', 'vse-modeselect');
+    modeSelect.setAttribute('aria-label', 'Summary style');
+    for (const m of MODES) {
+      const opt = node('option', null, m.label);
+      opt.value = m.id;
+      opt.title = m.hint;
+      modeSelect.appendChild(opt);
+    }
+    modeSelect.value = state.mode;
+    modeSelect.addEventListener('change', onModeChange);
 
     const askBtn = iconButton('chat', 'Ask a follow-up question', 'vse-askbtn');
     askBtn.setAttribute('aria-pressed', 'false');
@@ -331,7 +306,7 @@
     const closeBtn = iconButton('close', 'Close summary panel');
     closeBtn.addEventListener('click', () => collapse());
 
-    actions.append(modeWrap, askBtn, copyBtn, gearBtn, closeBtn);
+    actions.append(modeSelect, askBtn, copyBtn, gearBtn, closeBtn);
     header.appendChild(actions);
 
     const status = node('div', 'vse-status');
@@ -368,85 +343,17 @@
 
     panel.append(header, status, body, footer);
 
-    Object.assign(el, { panel, header, status, output, footer, thread, input, modeBtn, menu, askBtn, copyBtn });
+    Object.assign(el, { panel, header, status, output, footer, thread, input, modeSelect, askBtn, copyBtn });
     return panel;
   }
 
   const labelFor = (id) => (MODES.find((m) => m.id === id) || MODES[0]).label;
 
-  function buildModeMenu() {
-    const menu = node('div', 'vse-menu');
-    menu.setAttribute('role', 'menu');
-    menu.setAttribute('aria-label', 'Summary style');
-    menu.hidden = true;
-    for (const m of MODES) {
-      const item = node('button', 'vse-menuitem');
-      item.type = 'button';
-      item.setAttribute('role', 'menuitemradio');
-      item.setAttribute('aria-checked', String(m.id === state.mode));
-      item.dataset.mode = m.id;
-      item.appendChild(node('span', 'vse-menuitem-label', m.label));
-      item.appendChild(node('span', 'vse-menuitem-hint', m.hint));
-      item.addEventListener('click', () => selectMode(m.id));
-      menu.appendChild(item);
-    }
-    menu.addEventListener('keydown', onMenuKeydown);
-    return menu;
-  }
-
-  // --------------------------------------------------------- mode popover
-
-  const toggleModeMenu = () => (el.menu.hidden ? openModeMenu() : closeModeMenu());
-
-  function openModeMenu() {
-    el.menu.hidden = false;
-    el.modeBtn.setAttribute('aria-expanded', 'true');
-    const first = el.menu.querySelector('[aria-checked="true"]') || el.menu.firstElementChild;
-    if (first) first.focus();
-    document.addEventListener('click', onDocClickForMenu, true);
-  }
-
-  function closeModeMenu(refocus) {
-    if (!el.menu || el.menu.hidden) return;
-    el.menu.hidden = true;
-    el.modeBtn.setAttribute('aria-expanded', 'false');
-    document.removeEventListener('click', onDocClickForMenu, true);
-    if (refocus) el.modeBtn.focus();
-  }
-
-  function onDocClickForMenu(e) {
-    if (!el.menu.contains(e.target) && !el.modeBtn.contains(e.target)) closeModeMenu();
-  }
-
-  function onMenuKeydown(e) {
-    const items = Array.from(el.menu.querySelectorAll('.vse-menuitem'));
-    const i = items.indexOf(document.activeElement);
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      closeModeMenu(true);
-    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      const step = e.key === 'ArrowDown' ? 1 : items.length - 1;
-      items[(Math.max(i, 0) + step) % items.length].focus();
-    } else if (e.key === 'Home' || e.key === 'End') {
-      e.preventDefault();
-      items[e.key === 'Home' ? 0 : items.length - 1].focus();
-    } else if (e.key === 'Tab') {
-      closeModeMenu();
-    }
-  }
-
-  function selectMode(id) {
-    const changed = id !== state.mode;
-    state.mode = id;
-    el.modeBtn.querySelector('.vse-modebtn-label').textContent = labelFor(id);
-    for (const item of el.menu.querySelectorAll('.vse-menuitem')) {
-      item.setAttribute('aria-checked', String(item.dataset.mode === id));
-    }
-    closeModeMenu(true);
-    // A different mode is a different summary: show its cached copy if we have
-    // one, otherwise offer to run. Never spend money on a dropdown change.
-    if (changed && !state.running) showCachedOrIdle();
+  // A different mode is a different summary: show its cached copy if we have
+  // one, otherwise offer to run. Never spend money on a dropdown change.
+  function onModeChange(e) {
+    state.mode = e.target.value;
+    if (!state.running) showCachedOrIdle();
   }
 
   // -------------------------------------------------------------- mounting
@@ -481,14 +388,12 @@
       if (row) {
         el.button = buildButton();
         row.appendChild(el.button);
-        el.buttonInHeader = false;
       } else if (mountTries >= MOUNT_BUDGET && el.panel && el.panel.isConnected) {
         // YouTube moved the action row out from under us. An unusual position for
         // the button beats no button at all.
         el.button = buildButton();
         el.button.classList.add('vse-button-inheader');
         el.header.insertBefore(el.button, el.header.querySelector('.vse-header-actions'));
-        el.buttonInHeader = true;
         expand();
       }
     }
@@ -539,7 +444,6 @@
 
   function collapse() {
     state.expanded = false;
-    closeModeMenu();
     if (el.panel) el.panel.classList.add('vse-collapsed');
     if (el.button) {
       el.button.setAttribute('aria-expanded', 'false');
@@ -580,18 +484,6 @@
   };
 
   const busyStatus = (text) => setStatus('busy', text, [textButton('Stop', stop, 'vse-stop')]);
-
-  function skeleton() {
-    clearOutput();
-    const wrap = node('div', 'vse-skeleton');
-    wrap.setAttribute('aria-hidden', 'true');
-    for (const w of [88, 100, 72, 94, 60]) {
-      const line = node('div', 'vse-skeleton-line');
-      line.style.width = `${w}%`;
-      wrap.appendChild(line);
-    }
-    el.output.appendChild(wrap);
-  }
 
   /**
    * A non-fatal note that sits above the summary. Unlike an error it must not
@@ -789,7 +681,6 @@
           json3: res.json3 || null,
           cues: res.cues || null,
           trackInfo: res.trackInfo || msg.trackInfo || null,
-          strategy: res.strategy || 'captions',
         };
         state.transcript = payload;
       }
@@ -806,8 +697,8 @@
 
   const runMessage = (t) =>
     t.cues
-      ? { type: 'run', cues: t.cues, strategy: t.strategy || 'panel', trackInfo: t.trackInfo || null, mode: state.runMode }
-      : { type: 'run', json3: t.json3, trackInfo: t.trackInfo || null, strategy: 'captions', mode: state.runMode };
+      ? { type: 'run', cues: t.cues, trackInfo: t.trackInfo || null, mode: state.runMode }
+      : { type: 'run', json3: t.json3, trackInfo: t.trackInfo || null, mode: state.runMode };
 
   function onDone(msg, runId) {
     if (typeof msg.text === 'string') state.text = msg.text;
@@ -842,7 +733,7 @@
     paint();
     hideStatus();
     state.summarisedFor = state.videoId;
-    cacheSet(state.videoId, state.runMode || state.mode, { html: state.html, text: state.text, ts: Date.now() });
+    cacheSet(state.videoId, state.runMode || state.mode, { html: state.html, text: state.text });
   }
 
   function restoreSummaryBody() {
@@ -877,7 +768,6 @@
     const videoId = state.videoId;
     if (!videoId) return;
     expand();
-    closeModeMenu();
 
     if (!options.force) {
       const hit = await cacheGet(videoId, state.mode);
@@ -905,7 +795,6 @@
     if (el.output) el.output.setAttribute('aria-busy', 'true');
 
     busyStatus('Reading transcript…');
-    skeleton();
 
     let head;
     try {
@@ -918,14 +807,11 @@
     }
     if (!fresh(runId)) return finishRun();
 
-    state.meta = head.meta;
-
     // The page returns EITHER a caption track list (the worker then picks one and
     // asks us to fetch it) OR, when no track was usable, cues it already scraped.
     const t = state.transcript && state.transcript.videoId === videoId ? state.transcript : { videoId };
     if (Array.isArray(head.cues) && head.cues.length) {
       t.cues = head.cues;
-      t.strategy = head.strategy || 'panel';
     }
     state.transcript = t;
 
@@ -1087,7 +973,6 @@
     state.runSeq += 1;
     state.videoId = id;
     state.transcript = null;
-    state.meta = null;
     state.thread = [];
     state.text = '';
     state.html = '';
@@ -1096,7 +981,6 @@
     if (el.thread) el.thread.textContent = '';
     clearOutput();
     hideStatus();
-    closeModeMenu();
 
     mountTries = 0;
     mount();
@@ -1127,19 +1011,13 @@
     onNavigate();
   }, 800);
 
-  window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && el.menu && !el.menu.hidden) closeModeMenu(true);
-  });
-
   // ------------------------------------------------------------------ boot
 
   async function boot() {
     try {
-      const s = await sendMessage({ type: 'getSettings' }, 4000);
-      const settings = (s && (s.settings || s)) || {};
+      const settings = (await sendMessage({ type: 'getSettings' })) || {};
       state.autoRun = settings.autoRun === true; // never spend money by default
-      const mode = settings.defaultMode || settings.mode;
-      if (MODES.some((m) => m.id === mode)) state.mode = mode;
+      if (MODES.some((m) => m.id === settings.defaultMode)) state.mode = settings.defaultMode;
     } catch {
       /* worker asleep — the defaults are the safe ones */
     }

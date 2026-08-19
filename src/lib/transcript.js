@@ -129,6 +129,12 @@ export function formatTimestamp(seconds) {
 }
 
 /** '1:02:05' → 3725. Inverse of formatTimestamp. NaN-safe → 0. */
+/*
+ * Deliberate twin of parseTimestamp in src/content/inject.js — do NOT "unify"
+ * them. inject.js is a world:MAIN classic script that cannot import an ES
+ * module, and it returns NaN where this returns 0, on purpose: a garbled panel
+ * timestamp must drop its row rather than become a cue at t=0.
+ */
 export function parseTimestamp(str) {
   const parts = String(str == null ? '' : str).trim().split(':');
   if (!parts.length || parts.some((p) => !/^\d+$/.test(p))) return 0;

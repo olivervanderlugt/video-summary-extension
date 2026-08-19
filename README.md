@@ -16,7 +16,7 @@ there.
 There is no store listing and no build step. Clone and load the folder.
 
 ```sh
-git clone https://github.com/YOUR-USERNAME/video-summary-extension.git
+git clone https://github.com/olivervanderlugt/video-summary-extension.git
 cd video-summary-extension
 ```
 
