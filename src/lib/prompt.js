@@ -106,6 +106,13 @@ function metaBlock(meta = {}) {
       ? 'Captions: auto-generated — expect misheard names, jargon and punctuation.'
       : 'Captions: human-authored.'
   );
+  // Set when the transcript stops well short of the video's runtime. Say so in
+  // the summary rather than presenting a partial view as the whole video.
+  if (meta.coverageNote) {
+    lines.push(
+      `Transcript coverage: ${clean(meta.coverageNote)}. Summarize only what you have, and state in the TL;DR that the transcript covers just part of the video.`
+    );
+  }
   return lines.join('\n');
 }
 

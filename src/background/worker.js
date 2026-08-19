@@ -258,6 +258,22 @@ class Session {
       this.transcriptText = cuesToText(cues);
 
       const meta = { ...this.meta, isAuto: !!trackInfo?.isAuto, lang: trackInfo?.languageCode };
+
+      // A transcript that stops long before the video does is the dangerous
+      // failure: the summary reads as complete and is not. The panel-scraping
+      // strategy can truncate silently if YouTube virtualises its transcript
+      // list, so the check lives here, where every strategy passes through.
+      const last = cues[cues.length - 1];
+      const covered = (last?.t || 0) + (last?.d || 0);
+      const duration = Number(meta.duration) || 0;
+      if (duration > 0 && covered > 0 && covered < duration * 0.75) {
+        meta.coverageNote = `the transcript ends at ${Math.round(covered / 60)} min of a ${Math.round(duration / 60)} min video`;
+        this.post({
+          type: 'warning',
+          code: 'PARTIAL_TRANSCRIPT',
+          message: `Only the first ${Math.round((covered / duration) * 100)}% of this video has a transcript. The summary covers that part only.`,
+        });
+      }
       this.meta = meta;
       const system = buildSystemPrompt();
       const useMode = mode || settings.defaultMode;
