@@ -1,0 +1,7 @@
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"Streaming "}]},"index":0}]}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"works across "}]},"index":0}]}
+
+data: {"candidates":[{"content":{"role":"model","parts":[{"text":"chunk boundaries."}]},"index":0}],"usageMetadata":{"promptTokenCount":42,"candidatesTokenCount":7}}
+
+data: {"candidates":[{"content":{"role":"model","parts":[]},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":42,"candidatesTokenCount":7,"totalTokenCount":49}}

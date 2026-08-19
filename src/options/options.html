@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Video Summary — Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+<main class="page">
+
+  <header class="head">
+    <h1>Video Summary</h1>
+    <p class="sub">Summarise YouTube videos with your own AI provider key. Nothing here leaves your browser except the requests you send to that provider.</p>
+  </header>
+
+  <!-- Provider -->
+  <section class="card">
+    <h2>Provider</h2>
+    <fieldset class="providers">
+      <legend class="sr-only">Choose an AI provider</legend>
+      <div id="providerList" class="provider-list"></div>
+    </fieldset>
+  </section>
+
+  <!-- Key -->
+  <section class="card">
+    <h2>API key</h2>
+    <label class="lbl" for="key">Key for <span id="keyProviderName">this provider</span></label>
+    <div class="row">
+      <input id="key" type="password" class="grow" autocomplete="off" spellcheck="false" placeholder="">
+      <button id="toggleKey" type="button" class="btn ghost" aria-pressed="false">Show</button>
+    </div>
+    <p class="hint">
+      <a id="keysLink" href="#" target="_blank" rel="noreferrer noopener">Where to get a key</a>
+      <span class="dim"> — keys are stored separately per provider, so switching providers does not lose them.</span>
+    </p>
+
+    <div class="test">
+      <button id="testBtn" type="button" class="btn primary">Test this key</button>
+      <p id="testResult" class="result" role="status" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <!-- Base URL (compatible only) -->
+  <section class="card" id="baseUrlSection" hidden>
+    <h2>Server URL</h2>
+    <label class="lbl" for="baseUrl">Base URL of the OpenAI-compatible server</label>
+    <input id="baseUrl" type="url" class="grow" autocomplete="off" spellcheck="false" placeholder="http://localhost:11434/v1">
+    <p class="hint">The extension appends the usual OpenAI paths (<code>/chat/completions</code>, <code>/models</code>) to this.</p>
+    <p id="baseUrlMsg" class="result" role="status" aria-live="polite"></p>
+    <button id="grantBtn" type="button" class="btn" hidden>Grant access to this server</button>
+  </section>
+
+  <!-- Model -->
+  <section class="card">
+    <h2>Model</h2>
+    <label class="lbl" for="model">Pick from the provider's live model list</label>
+    <div class="row">
+      <select id="model" class="grow"></select>
+      <button id="refreshModels" type="button" class="btn ghost">Refresh</button>
+    </div>
+    <p id="modelMsg" class="result" role="status" aria-live="polite"></p>
+
+    <label class="lbl" for="modelCustom">Or type a model name the list does not have</label>
+    <input id="modelCustom" type="text" class="grow" autocomplete="off" spellcheck="false" placeholder="exact model id">
+  </section>
+
+  <!-- Preferences -->
+  <section class="card">
+    <h2>Preferences</h2>
+
+    <div class="field">
+      <label class="lbl" for="lang">Preferred caption language</label>
+      <input id="lang" type="text" class="short" autocomplete="off" spellcheck="false" placeholder="en">
+      <p class="hint">A language code such as <code>en</code>, <code>nl</code>, <code>de</code>. Used when a video offers several caption tracks; ignored when it offers one.</p>
+    </div>
+
+    <div class="field">
+      <label class="lbl" for="defaultMode">Default summary style</label>
+      <select id="defaultMode" class="short"></select>
+      <p id="modeHint" class="hint"></p>
+    </div>
+
+    <div class="field">
+      <label class="lbl" for="maxTokens">Maximum output length (tokens)</label>
+      <input id="maxTokens" type="number" class="short" min="256" max="32000" step="256">
+      <p class="hint">Roughly 750 words per 1000 tokens. Longer answers cost more.</p>
+    </div>
+
+    <div class="field check">
+      <div class="row tight">
+        <input id="autoRun" type="checkbox">
+        <label class="lbl inline" for="autoRun">Automatically summarise when I open a video</label>
+      </div>
+      <p class="hint warn">Off by default on purpose. With this on, every watch page you open spends your provider credit without asking — including videos you close after five seconds.</p>
+    </div>
+  </section>
+
+  <!-- Security -->
+  <section class="card security">
+    <h2>Where your key lives</h2>
+    <p>Your key is kept in <code>chrome.storage.local</code>, unencrypted. Anyone with access to your Chrome profile directory can read it — the same way they could read the passwords Chrome has saved for you. Encrypting it here would mean storing the passphrase next to the ciphertext, which protects nobody, so this extension does not pretend to.</p>
+    <p>It is never written to <code>chrome.storage.sync</code>, so it is never uploaded to your Google account or copied to your other machines.</p>
+    <p>The key is read only by the extension's background service worker, which is where every provider request is made. It is never handed to the YouTube page or the content script, so scripts running on youtube.com cannot see it.</p>
+    <p>The only outbound requests this extension makes are to the provider you configured above. There is no server of ours, no analytics, and no telemetry of any kind.</p>
+    <p>What gets sent to that provider, each time you summarise: the video's title, channel, duration, chapter titles, and the text of its captions. Once sent, that data is governed by your provider's data-retention policy, not by anything this extension does.</p>
+    <p>Worth doing: mint a key used only by this extension, and set a spend limit on it. Then a leak costs a capped amount and is fixed by revoking one key.</p>
+  </section>
+
+  <!-- Data -->
+  <section class="card">
+    <h2>Stored data</h2>
+    <p class="hint">Removes your keys and every setting from this browser. The extension stays installed.</p>
+    <div class="row tight">
+      <button id="wipeBtn" type="button" class="btn danger">Delete all stored data</button>
+      <button id="wipeConfirm" type="button" class="btn danger solid" hidden>Yes, delete everything</button>
+      <button id="wipeCancel" type="button" class="btn ghost" hidden>Cancel</button>
+    </div>
+    <p id="wipeMsg" class="result" role="status" aria-live="polite"></p>
+  </section>
+
+  <p id="saved" class="saved" role="status" aria-live="polite"></p>
+</main>
+<script type="module" src="options.js"></script>
+</body>
+</html>

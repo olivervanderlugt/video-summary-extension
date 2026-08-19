@@ -1,0 +1,10 @@
+{
+  "name": "video-summary-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Chrome extension: AI summaries of YouTube videos with clickable timestamps, bring your own API key.",
+  "scripts": {
+    "test": "node --test"
+  }
+}

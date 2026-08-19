@@ -1,0 +1,9 @@
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+node_modules/
+
+# assets/icon*.png are generated from assets/icon.svg, but they are COMMITTED
+# on purpose — Chrome needs them at load time and there is no build step.

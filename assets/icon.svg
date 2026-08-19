@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Video Summary">
+  <title>Video Summary</title>
+  <!-- Summary lines, the last one introduced by a play mark.
+       Flat, two colours, no gradients, no strokes — stays legible at 16px. -->
+  <g fill="#2f5cd0">
+    <rect x="5" y="7" width="54" height="11" rx="5.5"/>
+    <rect x="5" y="26" width="41" height="11" rx="5.5"/>
+    <rect x="31" y="45" width="28" height="11" rx="5.5"/>
+  </g>
+  <path fill="#e0483d" d="M5 39 L26 50.5 L5 62 Z"/>
+</svg>

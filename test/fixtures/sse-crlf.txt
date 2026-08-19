@@ -1,0 +1,8 @@
+: ping
+
+data: {"n":1}
+
+data: {"a":
+data: 2}
+
+data: {"n":3}
