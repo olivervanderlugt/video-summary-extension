@@ -1,0 +1,688 @@
+/* Every selector is prefixed .vse- : this stylesheet is injected into a page we
+   do not own, so it may never touch a YouTube class or a bare element selector.
+
+   Theming is inherited, not hardcoded. YouTube's own custom properties already
+   flip with its light/dark setting, so reading them means the panel follows the
+   user's YouTube theme, their "device theme" setting, and any future palette
+   change for free. The literals after each comma are fallbacks for the day
+   YouTube renames a variable — light values by default, dark under html[dark]. */
+
+.vse-panel,
+.vse-button {
+  --vse-fg: var(--yt-spec-text-primary, #0f0f0f);
+  --vse-fg-dim: var(--yt-spec-text-secondary, #606060);
+  --vse-bg: var(--yt-spec-base-background, #ffffff);
+  --vse-chip: var(--yt-spec-badge-chip-background, rgba(0, 0, 0, 0.05));
+  --vse-layer: var(--yt-spec-10-percent-layer, rgba(0, 0, 0, 0.1));
+  --vse-accent: var(--yt-spec-call-to-action, #065fd4);
+  --vse-radius: 12px;
+  --vse-gap: 12px;
+}
+
+html[dark] .vse-panel,
+html[dark] .vse-button,
+[dark] .vse-panel,
+[dark] .vse-button {
+  --vse-fg: var(--yt-spec-text-primary, #f1f1f1);
+  --vse-fg-dim: var(--yt-spec-text-secondary, #aaaaaa);
+  --vse-bg: var(--yt-spec-base-background, #0f0f0f);
+  --vse-chip: var(--yt-spec-badge-chip-background, rgba(255, 255, 255, 0.1));
+  --vse-layer: var(--yt-spec-10-percent-layer, rgba(255, 255, 255, 0.1));
+  --vse-accent: var(--yt-spec-call-to-action, #3ea6ff);
+}
+
+/* ------------------------------------------------------------------ button */
+
+/* Sits in the Like/Share row: same pill, same height, same type scale. */
+.vse-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  margin-left: 8px;
+  border: none;
+  border-radius: 18px;
+  background: var(--vse-chip);
+  color: var(--vse-fg);
+  font-family: inherit;
+  font-size: 1.4rem;
+  font-weight: 500;
+  line-height: 36px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.vse-button:hover {
+  background: var(--vse-layer);
+}
+
+.vse-button:active {
+  transform: scale(0.98);
+}
+
+.vse-button .vse-icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+.vse-button.vse-busy .vse-icon {
+  animation: vse-pulse 1.2s ease-in-out infinite;
+}
+
+.vse-button-inheader {
+  margin-left: 0;
+  height: 32px;
+  line-height: 32px;
+}
+
+/* ------------------------------------------------------------------- panel */
+
+.vse-panel {
+  display: block;
+  box-sizing: border-box;
+  margin: 0 0 16px;
+  padding: 0;
+  border: 1px solid var(--vse-layer);
+  border-radius: var(--vse-radius);
+  background: var(--vse-bg);
+  color: var(--vse-fg);
+  font-family: 'Roboto', 'Arial', sans-serif;
+  font-size: 1.4rem;
+  overflow: hidden;
+}
+
+.vse-panel.vse-collapsed {
+  display: none;
+}
+
+.vse-panel * {
+  box-sizing: border-box;
+}
+
+/* ------------------------------------------------------------------ header */
+
+.vse-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--vse-layer);
+}
+
+.vse-title {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--vse-fg);
+}
+
+.vse-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+/* Mode and Ask are secondary controls: quiet until you look for them. */
+.vse-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--vse-fg-dim);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.vse-iconbtn:hover {
+  background: var(--vse-chip);
+  color: var(--vse-fg);
+}
+
+.vse-iconbtn[aria-pressed='true'] {
+  background: var(--vse-chip);
+  color: var(--vse-accent);
+}
+
+.vse-iconbtn.vse-ok {
+  color: #2ba640;
+}
+
+.vse-iconbtn.vse-fail {
+  color: #cc0000;
+}
+
+.vse-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+/* --------------------------------------------------------- mode popover */
+
+.vse-modewrap {
+  position: relative;
+}
+
+.vse-modebtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  padding: 0 4px 0 10px;
+  border: none;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--vse-fg-dim);
+  font-family: inherit;
+  font-size: 1.2rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.vse-modebtn:hover {
+  background: var(--vse-chip);
+  color: var(--vse-fg);
+}
+
+.vse-modebtn .vse-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.vse-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 2200;
+  min-width: 200px;
+  padding: 6px;
+  border: 1px solid var(--vse-layer);
+  border-radius: 10px;
+  background: var(--vse-bg);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+}
+
+.vse-menu[hidden] {
+  display: none;
+}
+
+.vse-menuitem {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vse-fg);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vse-menuitem:hover {
+  background: var(--vse-chip);
+}
+
+.vse-menuitem[aria-checked='true'] {
+  background: var(--vse-chip);
+}
+
+.vse-menuitem[aria-checked='true'] .vse-menuitem-label {
+  color: var(--vse-accent);
+}
+
+.vse-menuitem-label {
+  font-size: 1.4rem;
+  font-weight: 500;
+}
+
+.vse-menuitem-hint {
+  font-size: 1.2rem;
+  color: var(--vse-fg-dim);
+}
+
+/* ------------------------------------------------------------------ status */
+
+.vse-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--vse-layer);
+  font-size: 1.2rem;
+  color: var(--vse-fg-dim);
+}
+
+.vse-status[hidden] {
+  display: none;
+}
+
+.vse-status-text {
+  flex: 1 1 auto;
+}
+
+.vse-status-cached .vse-status-text::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--vse-fg-dim);
+  vertical-align: middle;
+}
+
+.vse-spinner {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--vse-layer);
+  border-top-color: var(--vse-accent);
+  border-radius: 50%;
+  animation: vse-spin 0.8s linear infinite;
+}
+
+/* ------------------------------------------------------------ text buttons */
+
+.vse-textbtn {
+  flex: none;
+  padding: 4px 12px;
+  border: none;
+  border-radius: 14px;
+  background: var(--vse-chip);
+  color: var(--vse-fg);
+  font-family: inherit;
+  font-size: 1.2rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.vse-textbtn:hover {
+  background: var(--vse-layer);
+}
+
+.vse-textbtn.vse-primary {
+  background: var(--vse-accent);
+  color: var(--yt-spec-static-brand-white, #fff);
+}
+
+html[dark] .vse-textbtn.vse-primary {
+  color: #0f0f0f;
+}
+
+.vse-textbtn.vse-stop {
+  color: #cc0000;
+}
+
+/* -------------------------------------------------------------- the output */
+
+.vse-body {
+  max-height: 60vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* The typography IS the product. Comfortable measure, clear hierarchy,
+   bullets that scan. */
+.vse-output {
+  padding: 14px 16px 18px;
+  max-width: 68ch;
+  font-size: 1.4rem;
+  line-height: 1.6;
+  color: var(--vse-fg);
+  word-break: break-word;
+}
+
+.vse-output > *:first-child {
+  margin-top: 0;
+}
+
+.vse-output > *:last-child {
+  margin-bottom: 0;
+}
+
+.vse-output h1,
+.vse-output h2 {
+  margin: 22px 0 8px;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  color: var(--vse-fg-dim);
+}
+
+.vse-output h3,
+.vse-output h4 {
+  margin: 16px 0 6px;
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--vse-fg);
+}
+
+.vse-output p {
+  margin: 0 0 10px;
+}
+
+.vse-output ul,
+.vse-output ol {
+  margin: 0 0 12px;
+  padding-left: 20px;
+}
+
+.vse-output li {
+  margin: 0 0 6px;
+  padding-left: 2px;
+}
+
+.vse-output li::marker {
+  color: var(--vse-fg-dim);
+}
+
+.vse-output strong {
+  font-weight: 600;
+}
+
+.vse-output blockquote {
+  margin: 10px 0;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--vse-layer);
+  color: var(--vse-fg-dim);
+}
+
+.vse-output code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--vse-chip);
+  font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+}
+
+.vse-output pre {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--vse-chip);
+  overflow-x: auto;
+}
+
+.vse-output pre code {
+  padding: 0;
+  background: none;
+}
+
+.vse-output hr {
+  margin: 16px 0;
+  border: none;
+  border-top: 1px solid var(--vse-layer);
+}
+
+.vse-output a {
+  color: var(--vse-accent);
+}
+
+/* Timestamps read as interactive without shouting: monospace digits, tinted,
+   a hover that says "this seeks". */
+.vse-ts {
+  display: inline-block;
+  padding: 0 5px;
+  margin-right: 4px;
+  border: none;
+  border-radius: 5px;
+  background: var(--vse-chip);
+  color: var(--vse-accent);
+  font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.88em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  cursor: pointer;
+  vertical-align: baseline;
+  transition: background-color 0.12s ease;
+}
+
+.vse-ts:hover {
+  background: var(--vse-accent);
+  color: var(--vse-bg);
+}
+
+.vse-ts-failed {
+  background: #cc0000;
+  color: #fff;
+}
+
+/* ---------------------------------------------------------------- skeleton */
+
+.vse-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.vse-skeleton-line {
+  height: 12px;
+  border-radius: 6px;
+  background: var(--vse-chip);
+  animation: vse-pulse 1.4s ease-in-out infinite;
+}
+
+.vse-skeleton-line:nth-child(2) {
+  animation-delay: 0.1s;
+}
+.vse-skeleton-line:nth-child(3) {
+  animation-delay: 0.2s;
+}
+.vse-skeleton-line:nth-child(4) {
+  animation-delay: 0.3s;
+}
+.vse-skeleton-line:nth-child(5) {
+  animation-delay: 0.4s;
+}
+
+/* ------------------------------------------------------------ idle + error */
+
+.vse-idle {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.vse-idle-text {
+  margin: 0;
+  color: var(--vse-fg-dim);
+}
+
+.vse-error {
+  padding: 12px 14px;
+  border: 1px solid var(--vse-layer);
+  border-radius: 10px;
+  background: var(--vse-chip);
+}
+
+/* "No captions on this video" is a fact, not a malfunction: no red, no alarm. */
+.vse-error-calm {
+  background: transparent;
+}
+
+.vse-error-title {
+  margin-bottom: 4px;
+  font-weight: 600;
+}
+
+.vse-error-body {
+  color: var(--vse-fg-dim);
+  line-height: 1.5;
+}
+
+.vse-error-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* ------------------------------------------------------------------- ask */
+
+.vse-footer {
+  border-top: 1px solid var(--vse-layer);
+  padding: 10px 12px 12px;
+}
+
+.vse-footer[hidden] {
+  display: none;
+}
+
+.vse-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.vse-thread:not(:empty) {
+  margin-bottom: 12px;
+}
+
+.vse-turn-role {
+  margin-bottom: 2px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--vse-fg-dim);
+}
+
+.vse-turn-text {
+  font-size: 1.4rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.vse-turn-assistant .vse-turn-text {
+  white-space: normal;
+  padding: 0;
+  max-width: none;
+}
+
+.vse-askform {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.vse-input {
+  flex: 1 1 auto;
+  min-height: 38px;
+  max-height: 140px;
+  padding: 8px 10px;
+  border: 1px solid var(--vse-layer);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--vse-fg);
+  font-family: inherit;
+  font-size: 1.4rem;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.vse-input::placeholder {
+  color: var(--vse-fg-dim);
+}
+
+.vse-input:focus {
+  outline: none;
+  border-color: var(--vse-accent);
+}
+
+.vse-send {
+  flex: none;
+  color: var(--vse-accent);
+}
+
+/* --------------------------------------------------------- accessibility */
+
+.vse-panel button:focus-visible,
+.vse-button:focus-visible,
+.vse-input:focus-visible {
+  outline: 2px solid var(--vse-accent);
+  outline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------- motion */
+
+@keyframes vse-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes vse-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vse-panel *,
+  .vse-button {
+    animation: none !important;
+    transition: none !important;
+  }
+  .vse-skeleton-line {
+    opacity: 0.6;
+  }
+}
+
+/* ------------------------------------------------------------- narrow ---- */
+
+/* YouTube collapses the secondary column under the player below ~1000px. The
+   panel then spans the full content width instead of squeezing into nothing. */
+@media (max-width: 1000px) {
+  .vse-panel {
+    width: 100%;
+    max-width: 100%;
+  }
+  .vse-output {
+    max-width: none;
+    padding: 12px 14px 16px;
+  }
+  .vse-title {
+    font-size: 1.5rem;
+  }
+  .vse-modebtn-label {
+    display: none; /* the chevron alone still opens the style menu */
+  }
+  .vse-modebtn {
+    padding: 0 6px;
+  }
+  .vse-body {
+    max-height: 50vh;
+  }
+}
+
+@media (max-width: 600px) {
+  .vse-button-label {
+    display: none;
+  }
+  .vse-button {
+    padding: 0 10px;
+  }
+}

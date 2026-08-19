@@ -387,11 +387,13 @@ class Session {
       });
       this.history.push({ role: 'user', content: question }, { role: 'assistant', content: answer });
       this.pushRender(true);
+      // `answer` carries the text, not a flag: the panel reads
+      // `msg.answer || msg.text` when appending to the Q&A thread.
       this.post({
         type: 'done',
         text: this.buffer,
         html: linkifyTimestamps(renderMarkdown(this.buffer)),
-        answer: true,
+        answer: this.buffer,
       });
     } catch (err) {
       const { code, message } = toUserError(err);

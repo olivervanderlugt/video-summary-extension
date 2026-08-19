@@ -998,7 +998,6 @@
     state.runSeq += 1;
     state.videoId = id;
     state.transcript = null;
-    state.trackInfo = null;
     state.meta = null;
     state.thread = [];
     state.text = '';
