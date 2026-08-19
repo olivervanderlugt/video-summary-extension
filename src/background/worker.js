@@ -7,7 +7,7 @@
 
 import { getProvider, PROVIDERS } from '../providers/index.js';
 import { sseEvents } from '../lib/sse.js';
-import { parseJson3, pickTrack, cuesToText, estimateTokens } from '../lib/transcript.js';
+import { parseJson3, pickTrack, cuesToText } from '../lib/transcript.js';
 import { chunkCues } from '../lib/chunk.js';
 import {
   buildSystemPrompt,
@@ -174,11 +174,28 @@ class Session {
     });
   }
 
+  /**
+   * An MV3 service worker is killed after ~30s without an event. A connected
+   * port is supposed to keep it alive, but the gap before a slow model's first
+   * token is exactly the window where being wrong about that costs the user a
+   * paid request that never arrives. A cheap ping removes the doubt.
+   */
+  startKeepalive() {
+    clearInterval(this.keepalive);
+    this.keepalive = setInterval(() => this.post({ type: 'ping' }), 20_000);
+  }
+
+  stopKeepalive() {
+    clearInterval(this.keepalive);
+    this.keepalive = null;
+  }
+
   cancel() {
     this.controller?.abort();
     this.controller = null;
     clearTimeout(this.renderTimer);
     this.renderTimer = null;
+    this.stopKeepalive();
   }
 
   /**
@@ -224,6 +241,7 @@ class Session {
     this.controller = controller;
     this.buffer = '';
     this.history = [];
+    this.startKeepalive();
 
     try {
       const settings = await loadSettings();
@@ -283,6 +301,7 @@ class Session {
       else this.post({ type: 'done', text: this.buffer, html: linkifyTimestamps(renderMarkdown(this.buffer)), cancelled: true });
     } finally {
       this.controller = null;
+      this.stopKeepalive();
     }
   }
 
@@ -343,6 +362,7 @@ class Session {
     const controller = new AbortController();
     this.controller = controller;
     this.buffer = '';
+    this.startKeepalive();
 
     try {
       const settings = await loadSettings();
@@ -378,6 +398,7 @@ class Session {
       if (code !== 'CANCELLED') this.post({ type: 'error', code, message });
     } finally {
       this.controller = null;
+      this.stopKeepalive();
     }
   }
 }

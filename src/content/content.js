@@ -53,6 +53,10 @@
       title: 'The caption track came back empty',
       body: 'YouTube listed a caption track but returned nothing for it. Reloading the page usually fixes this.',
     },
+    NO_TRANSCRIPT: {
+      title: 'YouTube would not hand over the transcript',
+      body: 'This video has captions, but YouTube refused to serve their text to this session. Reload the page — or open the video’s own transcript panel once — and try again.',
+    },
     NO_PLAYER: { title: "Couldn't read the video data", body: 'Reload the page and try again.' },
     PAGE_TIMEOUT: { title: 'The page stopped responding', body: 'Reload the page and try again.' },
     NO_KEY: { title: 'No API key configured', action: 'options', body: 'Add your provider key in the extension settings.' },
@@ -692,32 +696,51 @@
     } else if (msg.type === 'done') {
       onDone(msg, runId);
     } else if (msg.type === 'error') {
+      // The page found a transcript by another route after the worker had already
+      // given up on the caption tracks. Our cues supersede that complaint.
+      const t = state.transcript;
+      if (t && t.cues && (msg.code === 'NO_CAPTIONS' || msg.code === 'TRACK_EMPTY')) return;
       finishRun();
       renderError(msg.code, msg.message);
     }
   }
 
+  /** The worker picked a track; the page fetches it. The page may answer with
+   *  raw json3 (strategy "captions") or with ready-made cues (strategies
+   *  "panel"/"innertube"); the worker accepts either. This file parses neither. */
   async function onFetchTrack(msg, runId) {
     const videoId = state.videoId;
     const cached = state.transcript;
     try {
-      let json3;
-      if (cached && cached.videoId === videoId && cached.baseUrl === msg.baseUrl && cached.json3) {
-        json3 = cached.json3; // same track, already downloaded — no second network trip
+      let payload;
+      if (cached && cached.videoId === videoId && cached.baseUrl === msg.baseUrl && (cached.json3 || cached.cues)) {
+        payload = cached; // already downloaded for this video — no second network trip
       } else {
-        const res = await pageCall('fetchTrack', { baseUrl: msg.baseUrl });
-        json3 = res.json3;
-        state.transcript = { videoId, baseUrl: msg.baseUrl, json3 };
+        const res = await pageCall('fetchTrack', { baseUrl: msg.baseUrl, trackInfo: msg.trackInfo });
+        payload = {
+          videoId,
+          baseUrl: msg.baseUrl,
+          json3: res.json3 || null,
+          cues: res.cues || null,
+          trackInfo: res.trackInfo || msg.trackInfo || null,
+          strategy: res.strategy || 'captions',
+        };
+        state.transcript = payload;
       }
       if (!fresh(runId)) return;
       busyStatus('Summarising…');
-      post({ type: 'run', json3, trackInfo: msg.trackInfo, mode: state.mode });
+      post(runMessage(payload));
     } catch (err) {
       if (!fresh(runId)) return;
       finishRun();
       renderError(err.code, err.message);
     }
   }
+
+  const runMessage = (t) =>
+    t.cues
+      ? { type: 'run', cues: t.cues, strategy: t.strategy || 'panel', trackInfo: t.trackInfo || null, mode: state.mode }
+      : { type: 'run', json3: t.json3, trackInfo: t.trackInfo || null, strategy: 'captions', mode: state.mode };
 
   function onDone(msg, runId) {
     if (typeof msg.text === 'string') state.text = msg.text;
@@ -818,19 +841,32 @@
     if (!fresh(runId)) return finishRun();
 
     state.meta = head.meta;
-    // A fresh port per video keeps the worker's per-connection state honest.
+
+    // The page returns EITHER a caption track list (the worker then picks one and
+    // asks us to fetch it) OR, when no track was usable, cues it already scraped.
+    const t = state.transcript && state.transcript.videoId === videoId ? state.transcript : { videoId };
+    if (Array.isArray(head.cues) && head.cues.length) {
+      t.cues = head.cues;
+      t.strategy = head.strategy || 'panel';
+    }
+    state.transcript = t;
+
     const port = ensurePort();
     if (!port) return;
-    if (state.begunFor !== videoId) {
+
+    const needBegin = state.begunFor !== videoId;
+    if (needBegin) {
       state.begunFor = videoId;
-      post({ type: 'begin', meta: head.meta, tracks: head.tracks });
-    } else if (state.transcript && state.transcript.json3) {
-      // Re-run with a different mode: the worker already knows the video.
-      busyStatus('Summarising…');
-      post({ type: 'run', json3: state.transcript.json3, trackInfo: state.trackInfo, mode: state.mode });
-    } else {
-      post({ type: 'begin', meta: head.meta, tracks: head.tracks });
+      post({ type: 'begin', meta: head.meta, tracks: head.tracks || [] });
     }
+
+    if (t.cues || (!needBegin && t.json3)) {
+      // Nothing left to fetch — a re-run with a different mode, or cues the page
+      // scraped without any caption track to choose from.
+      busyStatus('Summarising…');
+      post(runMessage(t));
+    }
+    // Otherwise: wait for the worker's 'fetchTrack' reply.
   }
 
   function finishRun() {
