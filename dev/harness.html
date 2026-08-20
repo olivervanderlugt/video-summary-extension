@@ -46,6 +46,7 @@
       <strong>harness</strong>
       <button id="h-nav">simulate navigation to another video</button>
       <button id="h-notracks">next run: no caption tracks</button>
+      <button id="h-nokey">toggle "no API key set"</button>
       <span id="harness-out">ready</span>
     </div>
 
@@ -154,6 +155,10 @@
         history.pushState({}, '', `?v=${videoId}`);
         window.dispatchEvent(new CustomEvent('yt-navigate-finish'));
         out(`navigated to ${videoId}`);
+      });
+      document.getElementById('h-nokey').addEventListener('click', () => {
+        window.__harnessNoKey = !window.__harnessNoKey;
+        out(`API key configured: ${window.__harnessNoKey ? 'no' : 'yes'} — collapse and reopen the panel`);
       });
       document.getElementById('h-notracks').addEventListener('click', () => {
         withTracks = !withTracks;

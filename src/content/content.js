@@ -353,6 +353,9 @@
   // one, otherwise offer to run. Never spend money on a dropdown change.
   function onModeChange(e) {
     state.mode = e.target.value;
+    // Pinned for the session: a later settings re-read must not silently pull
+    // the mode back to the configured default under the user.
+    state.modeChosen = true;
     if (!state.running) showCachedOrIdle();
   }
 
@@ -440,6 +443,25 @@
     state.expanded = true;
     if (el.panel) el.panel.classList.remove('vse-collapsed');
     if (el.button) el.button.setAttribute('aria-expanded', 'true');
+    // The user may have just added a key in another tab; re-read before the
+    // idle state tells them they still have none.
+    refreshSettings().then(() => {
+      if (!state.running && !state.html) showCachedOrIdle();
+    });
+  }
+
+  /** Reads the non-secret slice of settings the panel is allowed to see. */
+  async function refreshSettings() {
+    try {
+      const settings = (await sendMessage({ type: 'getSettings' })) || {};
+      state.autoRun = settings.autoRun === true; // never spend money by default
+      state.hasKey = settings.hasKey !== false;
+      if (MODES.some((m) => m.id === settings.defaultMode) && !state.modeChosen) {
+        state.mode = settings.defaultMode;
+      }
+    } catch {
+      /* worker asleep — leave the last known values in place */
+    }
   }
 
   function collapse() {
@@ -521,6 +543,24 @@
     clearOutput();
     hideStatus();
     const box = node('div', 'vse-idle');
+
+    if (state.hasKey === false) {
+      // Say it before the click, not after. Otherwise the first thing a new
+      // user experiences is a wait that ends in an error.
+      box.appendChild(
+        node(
+          'p',
+          'vse-idle-text',
+          'This extension uses your own AI provider key, and there is no key set yet. It takes a minute: pick a provider, paste a key, press Test.'
+        )
+      );
+      box.appendChild(
+        textButton('Open settings', () => sendMessage({ type: 'openOptions' }), 'vse-primary')
+      );
+      el.output.appendChild(box);
+      return;
+    }
+
     box.appendChild(
       node('p', 'vse-idle-text', `Summarise this video (${labelFor(state.mode).toLowerCase()}) using your own API key.`)
     );
@@ -774,6 +814,16 @@
     if (!videoId) return;
     expand();
 
+    // Before anything costs time: with no key configured, a run can only end in
+    // an error after a transcript fetch the user waited through. Say so now.
+    // Re-read first, because the key may have been added in another tab.
+    await refreshSettings();
+    if (state.videoId !== videoId) return;
+    if (state.hasKey === false) {
+      renderIdle();
+      return;
+    }
+
     if (!options.force) {
       const hit = await cacheGet(videoId, state.mode);
       if (state.videoId !== videoId || state.running) return;
@@ -1022,13 +1072,7 @@
   // ------------------------------------------------------------------ boot
 
   async function boot() {
-    try {
-      const settings = (await sendMessage({ type: 'getSettings' })) || {};
-      state.autoRun = settings.autoRun === true; // never spend money by default
-      if (MODES.some((m) => m.id === settings.defaultMode)) state.mode = settings.defaultMode;
-    } catch {
-      /* worker asleep — the defaults are the safe ones */
-    }
+    await refreshSettings();
     state.videoId = isWatch() ? currentVideoId() : null;
     mount();
     if (document.body) observer.observe(document.body, { childList: true, subtree: true });

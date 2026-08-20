@@ -167,7 +167,7 @@ function makePort(onToPage) {
 }
 
 /** Install a `chrome` good enough for content.js, before content.js loads. */
-export function installChromeShim({ autoRun = false, defaultMode = 'detailed' } = {}) {
+export function installChromeShim({ autoRun = false, defaultMode = 'detailed', hasKey = true } = {}) {
   const session = new Map();
   const sent = [];
 
@@ -178,7 +178,8 @@ export function installChromeShim({ autoRun = false, defaultMode = 'detailed' } 
       connect: () => makePort((msg) => sent.push(msg)),
       sendMessage: async (msg) => {
         sent.push(msg);
-        if (msg.type === 'getSettings') return { autoRun, defaultMode, lang: 'en' };
+        if (msg.type === 'getSettings')
+          return { autoRun, defaultMode, lang: 'en', hasKey: window.__harnessNoKey ? false : hasKey };
         if (msg.type === 'openOptions') {
           note('openOptions requested');
           return { ok: true };

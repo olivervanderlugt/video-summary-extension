@@ -518,7 +518,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // The content script runs on youtube.com and needs none of the secrets.
         // Hand it the two fields it actually uses and nothing else.
         const s = await loadSettings();
-        answer({ autoRun: s.autoRun, defaultMode: s.defaultMode, lang: s.lang });
+        // `hasKey` is a boolean, never the key: it lets the panel say "set this
+        // up first" before the user clicks and waits through a transcript fetch
+        // only to be told at the end.
+        answer({
+          autoRun: s.autoRun,
+          defaultMode: s.defaultMode,
+          lang: s.lang,
+          hasKey: !!activeKey(s),
+        });
         return;
       }
       case 'listModels': {
@@ -555,6 +563,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
+
+// A bring-your-own-key extension does nothing at all until a key is entered, so
+// the settings page IS the onboarding. Open it once, on first install only —
+// not on every update, which would be obnoxious.
+chrome.runtime.onInstalled.addListener(({ reason }) => {
+  if (reason === 'install') chrome.runtime.openOptionsPage();
+});
 
 // Session storage is trusted-contexts-only by default, so every read and write
 // from the content script would reject and the summary cache would silently

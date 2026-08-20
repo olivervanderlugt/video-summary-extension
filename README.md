@@ -26,8 +26,15 @@ cd video-summary-extension
 2. Turn on **Developer mode** (top right)
 3. Click **Load unpacked**
 4. Select the `video-summary-extension` folder you just cloned
-5. Click the extension's icon in the toolbar, then **Settings**
+5. The settings page opens by itself on first install. If it doesn't, click the
+   extension's icon in the toolbar.
 6. Pick a provider, paste your API key, and press **Test this key**
+
+Your settings are stored locally and persist across browser restarts — you set
+the key once. There is no account, no sign-in, and nothing is synced anywhere:
+see [PRIVACY.md](PRIVACY.md). Until a key is set, the panel says so and offers a
+link to the settings, rather than letting you start a summary that can only end
+in an error.
 
 If the icons are missing, generate them first — see
 [Generating the icons](#generating-the-icons).

@@ -19,6 +19,7 @@ globalThis.chrome = {
     onMessage: { addListener: (fn) => hooks.message.push(fn) },
     onConnect: { addListener: (fn) => hooks.connect.push(fn) },
     openOptionsPage: () => {},
+    onInstalled: { addListener: () => {} },
   },
   storage: {
     local: {
@@ -64,8 +65,17 @@ function setSettings(patch) {
 test('getSettings never hands an API key to the content script', async () => {
   setSettings({});
   const reply = await send({ type: 'getSettings' });
-  assert.deepEqual(Object.keys(reply).sort(), ['autoRun', 'defaultMode', 'lang']);
+  // An exact key set, deliberately: adding a field here should be a decision,
+  // not something that slips in. `hasKey` is a boolean, never the key itself.
+  assert.deepEqual(Object.keys(reply).sort(), ['autoRun', 'defaultMode', 'hasKey', 'lang']);
+  assert.equal(reply.hasKey, true);
   assert.ok(!JSON.stringify(reply).includes('SECRET'), 'a key leaked into the reply');
+});
+
+test('getSettings reports a missing key without revealing anything', async () => {
+  setSettings({ keys: { anthropic: '', openai: '', gemini: '', compatible: '' } });
+  const reply = await send({ type: 'getSettings' });
+  assert.equal(reply.hasKey, false);
 });
 
 test('a message from another extension is refused outright', async () => {
