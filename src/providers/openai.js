@@ -1,6 +1,6 @@
 // Also backs the `compatible` provider (OpenRouter / Groq / LM Studio / Ollama /
 // corporate proxies), which is why every URL is derived from baseUrl.
-import { errorDetail, statusError } from './errors.js';
+import { errorDetail, statusError, streamError } from './errors.js';
 
 export const id = 'openai';
 export const label = 'OpenAI';
@@ -61,22 +61,20 @@ export function parseModels(json) {
     .sort();
 }
 
+// Neutral name on purpose: this adapter also backs OpenRouter and whatever
+// OpenAI-compatible server the user pointed `compatible` at.
+const PROVIDER = { name: 'The provider', keysUrl: null, statusUrl: "the provider's status page" };
+
 export function extractDelta(event) {
   // A mid-stream error arrives as a normal event. Returning '' for it would end
   // the stream cleanly and cache half a summary as if it were the whole thing.
-  if (event?.error) {
-    const message = typeof event.error === 'string' ? event.error : event.error.message;
-    throw new Error(message || 'The provider reported an error mid-response.');
-  }
+  // Typed, because this is how OpenAI and OpenRouter report a rate limit once
+  // the 200 is already out: it has to reach the worker as `rate_limit`, or it
+  // is neither retried nor explained.
+  if (event?.error) throw streamError(event.error, PROVIDER);
   return event?.choices?.[0]?.delta?.content || '';
 }
 
 export function parseError(status, bodyText) {
-  // Neutral name on purpose: this adapter also backs OpenRouter and whatever
-  // OpenAI-compatible server the user pointed `compatible` at.
-  return statusError(status, errorDetail(bodyText), {
-    name: 'The provider',
-    keysUrl: null,
-    statusUrl: "the provider's status page",
-  });
+  return statusError(status, errorDetail(bodyText), PROVIDER);
 }

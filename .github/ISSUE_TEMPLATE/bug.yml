@@ -1,0 +1,40 @@
+name: Bug
+description: Something is broken that isn't about a specific video.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+  - type: input
+    id: version
+    attributes:
+      label: Extension version
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      options: [OpenRouter, Anthropic, OpenAI, Google Gemini, OpenAI-compatible, Not configured yet]
+  - type: markdown
+    attributes:
+      value: "Never paste an API key into an issue. If you already have, revoke it."

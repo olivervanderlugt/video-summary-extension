@@ -98,6 +98,10 @@ const el = {
   tourNext: $('tourNext'),
 };
 
+// The fields that hold a half-finished value between keystrokes. Selects and
+// checkboxes commit the moment they change, so they have nothing to lose.
+const DRAFT_FIELDS = [el.key, el.baseUrl, el.modelCustom, el.maxTokens];
+
 let settings = { ...DEFAULTS };
 // Origin the stored base URL currently holds a host permission for.
 let grantedOrigin = null;
@@ -180,11 +184,23 @@ function watchStorage() {
     if (area !== 'local' || !changes.settings) return;
     // Our own writes come back through here too; they carry what we already have.
     if (JSON.stringify(changes.settings.newValue) === JSON.stringify(settings)) return;
+
+    // Whatever the user is in the middle of typing is newer than the write that
+    // just arrived, so it survives the re-render and is put back into settings.
+    // The view is left alone for the same reason: a second tab must not throw
+    // someone out of the form they are filling in.
+    const typing = DRAFT_FIELDS.includes(document.activeElement) ? document.activeElement : null;
+    const draft = typing ? typing.value : null;
+
     await load();
     renderProviders();
     fill();
     renderProviderFields();
-    showKeyView(!adapter().supportsSignIn);
+    if (!typing) showKeyView(!adapter().supportsSignIn);
+    if (typing && typing.value !== draft) {
+      typing.value = draft;
+      typing.dispatchEvent(new Event('input', { bubbles: true }));
+    }
     refreshModels({ silent: true });
   });
 }
@@ -229,10 +245,30 @@ function keyViewProvider() {
   return (withKey || keyProviders()[0])[0];
 }
 
+/** The provider the sign-in view acts on. */
+function signInProvider() {
+  const found = Object.entries(PROVIDERS).find(([, p]) => p.supportsSignIn);
+  return found ? found[0] : DEFAULTS.provider;
+}
+
+/**
+ * The one place a provider change is written down. `model` is a single global
+ * string, and model ids belong to the provider that minted them —
+ * `claude-opus-5` on Anthropic is `anthropic/claude-opus-5` on OpenRouter — so
+ * carrying one across is a request the new provider will reject. Dropping it
+ * lets refreshModels fall back to that provider's default.
+ */
+function commitProvider(id) {
+  if (settings.provider === id) return false;
+  settings.provider = id;
+  settings.model = '';
+  return true;
+}
+
 /** Opening the key view only reveals it. Typing in it is the choice, and this
     is where that choice becomes the stored provider. */
 function commitKeyProvider() {
-  settings.provider = keyViewProvider();
+  return commitProvider(keyViewProvider());
 }
 
 function renderProviders() {
@@ -250,7 +286,7 @@ function renderProviders() {
     radio.checked = id === keyViewProvider();
     radio.addEventListener('change', () => {
       if (!radio.checked) return;
-      settings.provider = id;
+      commitProvider(id);
       renderProviderFields();
       save();
       refreshModels({ silent: true });
@@ -311,7 +347,9 @@ function renderProviderFields() {
 /** One status, in one place: the badge on the panel heading. */
 function updateState(testPassed) {
   const onSignIn = !el.signInView.hidden;
-  const hasKey = !!(settings.keys[onSignIn ? settings.provider : keyViewProvider()] || '').trim();
+  // The sign-in view reports on the provider it would sign you in to, not on
+  // whatever is stored: looking at it commits nothing.
+  const hasKey = !!(settings.keys[onSignIn ? signInProvider() : keyViewProvider()] || '').trim();
   el.connState.textContent = testPassed
     ? 'tested, works'
     : hasKey
@@ -346,8 +384,10 @@ async function refreshModels({ silent } = {}) {
   const selected = settings.model || p.defaultModel || '';
 
   // Nothing to ask the provider with yet. Show the built-in list quietly rather
-  // than warning someone about a fetch they never asked for.
-  if (!(settings.keys[settings.provider] || '').trim()) {
+  // than warning someone about a fetch they never asked for. A provider you
+  // point at your own server is exempt: a local one usually wants no key, and
+  // there is no built-in list to fall back to.
+  if (!(settings.keys[settings.provider] || '').trim() && !p.requiresBaseUrl) {
     renderModelOptions(p.fallbackModels || [], selected);
     syncModelInputs(selected);
     say(el.modelMsg, '');
@@ -471,13 +511,10 @@ function wire() {
     el.key.focus();
   });
 
+  // Also a disclosure and nothing more. Looking at the sign-in view must not
+  // leave someone with a working key on a provider they have no key for;
+  // pressing Sign in is the interaction that commits.
   el.toSignInView.addEventListener('click', () => {
-    if (!adapter().supportsSignIn) {
-      settings.provider = 'openrouter';
-      renderProviderFields();
-      save();
-      refreshModels({ silent: true });
-    }
     showKeyView(false);
     el.signInBtn.focus();
   });
@@ -488,7 +525,13 @@ function wire() {
     const res = await ask({ type: 'signIn' });
     el.signInBtn.disabled = false;
     if (res && res.ok) {
+      const previous = settings.provider;
       await load();          // the worker wrote the key; re-read rather than guess
+      // The worker sets the provider but leaves `model` alone, so the commit
+      // happens here, against what was stored before the sign-in.
+      settings.provider = signInProvider();
+      if (settings.provider !== previous) settings.model = '';
+      await persist();
       renderProviders();
       renderProviderFields();
       fill();
@@ -517,16 +560,27 @@ function wire() {
 
   el.baseUrl.addEventListener('input', () => {
     commitKeyProvider();
-    // Keep the last URL that parsed. Storing a rejected one is how the worker
-    // ended up with a blank base URL and a default of api.openai.com.
-    if (!validateBaseUrl()) return;
-    settings.baseUrl = el.baseUrl.value.trim();
+    const origin = validateBaseUrl();
+    const value = el.baseUrl.value.trim();
+    // Keep the last URL that parsed rather than store a rejected one: that is
+    // how the worker ended up with a blank base URL and a default of
+    // api.openai.com. An emptied field is not a rejected URL though — it is
+    // someone taking the server out, and leaving the old host stored would keep
+    // sending their key and the transcript to it.
+    if (!origin && value) return;
+    settings.baseUrl = value;
     saveSoon();
   });
 
   el.baseUrl.addEventListener('change', async () => {
     const origin = validateBaseUrl();
-    if (origin) await requestOrigin(origin);
+    if (origin) {
+      await requestOrigin(origin);
+    } else if (!el.baseUrl.value.trim() && grantedOrigin) {
+      // Cleared: hand back the permission the old host still holds.
+      await releaseOrigin(grantedOrigin);
+      grantedOrigin = null;
+    }
   });
 
   el.grantBtn.addEventListener('click', async () => {

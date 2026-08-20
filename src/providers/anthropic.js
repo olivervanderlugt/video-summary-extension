@@ -1,4 +1,4 @@
-import { errorDetail, statusError } from './errors.js';
+import { errorDetail, statusError, streamError } from './errors.js';
 
 export const id = 'anthropic';
 export const label = 'Anthropic (Claude)';
@@ -45,10 +45,11 @@ export function parseModels(json) {
     .sort();
 }
 
+const PROVIDER = { name: 'Anthropic', keysUrl, statusUrl: 'status.anthropic.com' };
+
 export function extractDelta(event) {
-  if (event?.type === 'error') {
-    throw new Error(event.error?.message || 'The provider reported an error mid-response.');
-  }
+  // Same shape as the HTTP error, just delivered inside the stream.
+  if (event?.type === 'error') throw streamError(event.error, PROVIDER);
   if (event?.type === 'content_block_delta' && event.delta?.type === 'text_delta') {
     return event.delta.text || '';
   }
@@ -56,9 +57,5 @@ export function extractDelta(event) {
 }
 
 export function parseError(status, bodyText) {
-  return statusError(status, errorDetail(bodyText), {
-    name: 'Anthropic',
-    keysUrl,
-    statusUrl: 'status.anthropic.com',
-  });
+  return statusError(status, errorDetail(bodyText), PROVIDER);
 }

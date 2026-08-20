@@ -141,8 +141,16 @@
   // reliable signal, so text matching is only used to find the button that opens it.
   // Russian YouTube says "Показать текст видео", not "стенограмма" — the word
   // that was here matched nothing on the real UI. The rest were simply missing.
+  //
+  // Every entry has to be a phrase that ONLY the transcript button carries: a
+  // match here is clicked on the user's behalf. Two were not, and are gone:
+  //   النص  alone is just "the text", so "نسخ النص" (copy text) matched — the
+  //         verb is now required.
+  //   字幕  is "subtitles": it matches the player's own CC button (aria-label
+  //         "字幕 (c)"), which every watch page has, in zh AND ja.
+  // A missed strategy falls through to innertube; a wrong click cannot be undone.
   const TRANSCRIPT_WORD =
-    /transcript|transkript|transcrip|字幕|文字起こし|스크립트|стенограмм|транскрип|текст видео|chép lời|प्रतिलेख|ट्रांसक्रिप्ट|النص/i;
+    /transcript|transkript|transcrip|文字起こし|文字[記记][錄录]|[轉转][錄录]稿|스크립트|транскрип|текст\s+видео|chép\s+lời|प्रतिलेख|ट्रांसक्रिप्ट|إظهار\s+النص/i;
 
   /** "1:23" / "12:34:56" / "-0:05" → seconds.
    *  Deliberate twin of parseTimestamp in src/lib/transcript.js — do NOT "unify"
@@ -268,12 +276,14 @@
         if (segments.length <= before) break; // stopped growing: this is all there is
       }
 
-      // Only refuse when the panel is grossly short — plenty of complete
-      // transcripts end well before the runtime does (outros, music, credits),
-      // and rejecting those sent a usable transcript to the next strategy for
-      // nothing. Genuine truncation still reaches the user: the worker warns
-      // with PARTIAL_TRANSCRIPT on exactly this measurement.
-      if (runtime > 0 && lastT(segments) < runtime * 0.25) {
+      // 0.6: below this the scrape is almost certainly virtualised away rather
+      // than a transcript that simply ends early. Strategy C is NOT virtualised
+      // — it returns the whole transcript — so accepting a short scrape here
+      // short-circuits a complete answer. Above it we keep the scrape even
+      // though speech can stop before the runtime does (outros, music,
+      // credits); the worker still warns with PARTIAL_TRANSCRIPT under 0.75, so
+      // the 0.6–0.75 band reaches the user labelled rather than silently.
+      if (runtime > 0 && lastT(segments) < runtime * 0.6) {
         return null;
       }
 

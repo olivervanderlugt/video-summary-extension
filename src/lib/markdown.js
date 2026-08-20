@@ -37,7 +37,10 @@ function inline(text) {
 
 // `#` renders as h2, not h1: this panel is injected into someone else's page
 // and must not open a second top-level heading in it.
-const HEADING = /^(#{1,6})\s*(.*)$/;
+// Whitespace after the hashes is required, as CommonMark requires it: without
+// it `#1 rule of the club` and `#RustLang was mentioned` become headings, and
+// both are things a summary of a real video actually says.
+const HEADING = /^(#{1,6})(?:\s+(.*))?$/;
 const FENCE = /^\s*(?:```|~~~)/;
 const BULLET = /^(\s*)[-*+]\s+(.*)$/;
 const ORDERED = /^(\s*)\d+[.)]\s+(.*)$/;

@@ -1,4 +1,4 @@
-import { errorDetail, statusError } from './errors.js';
+import { errorDetail, statusError, streamError, ProviderError } from './errors.js';
 
 export const id = 'gemini';
 export const label = 'Google Gemini';
@@ -48,15 +48,20 @@ export function parseModels(json) {
 
 const BLOCKED_FINISH = new Set(['SAFETY', 'RECITATION', 'PROHIBITED_CONTENT', 'BLOCKLIST']);
 
+const PROVIDER = { name: 'Google', keysUrl, statusUrl: 'status.cloud.google.com' };
+
 export function extractDelta(event) {
+  if (event?.error) throw streamError(event.error, PROVIDER);
   const blocked = event?.promptFeedback?.blockReason;
+  // `blocked`, unlike the errors above, is an answer: retrying spends money to
+  // be refused again, so it gets a code of its own and stays out of RETRYABLE.
   if (blocked) {
-    throw new Error(`Gemini refused to summarize this transcript (${blocked}) — try a different provider or model.`);
+    throw new ProviderError('blocked', `Gemini refused to summarize this transcript (${blocked}) — try a different provider or model.`);
   }
   const candidate = event?.candidates?.[0];
   const finish = candidate?.finishReason;
   if (finish && BLOCKED_FINISH.has(finish)) {
-    throw new Error(`Gemini stopped part-way through (${finish}) — try a different provider or model.`);
+    throw new ProviderError('blocked', `Gemini stopped part-way through (${finish}) — try a different provider or model.`);
   }
   return (candidate?.content?.parts || []).map((p) => p?.text || '').join('');
 }
@@ -74,9 +79,5 @@ export function parseError(status, bodyText) {
       message: `Google rejected the API key (${detail || 'API_KEY_INVALID'}) — create a fresh key at ${keysUrl} and paste it into the extension options.`,
     };
   }
-  return statusError(status, detail, {
-    name: 'Google',
-    keysUrl,
-    statusUrl: 'status.cloud.google.com',
-  });
+  return statusError(status, detail, PROVIDER);
 }
