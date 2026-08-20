@@ -412,7 +412,9 @@ async function refreshModels({ silent } = {}) {
       el.modelMsg,
       fallback.length
         ? `Showing a built-in list, which may be out of date — ${why}`
-        : `No model list available — ${why}. Type the model name below.`,
+        // The worker's messages are whole sentences and already end in a
+        // full stop; appending another produced "first.. Type".
+        : `No model list available — ${String(why).replace(/\.\s*$/, '')}. Type the model name below.`,
       'warn'
     );
   }
