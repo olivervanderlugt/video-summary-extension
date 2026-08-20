@@ -13,6 +13,20 @@ there.
 
 <sub>Screenshot from `dev/harness.html` — the offline development harness, not a live YouTube page.</sub>
 
+## In the panel
+
+- **Five summary styles**, switched from the dropdown in the panel header:
+  **Brief** (a TL;DR and up to five key points), **Detailed** (adds a
+  chapter-by-chapter walkthrough and a "worth watching?" verdict), **Bullets**
+  (nothing but a flat list), **Explain simply** (plain language, jargon
+  unpacked), and **Key quotes** (verbatim lines with a note on why each
+  matters). Each style is a separate summary and a separate request.
+- **Ask** — the speech-bubble button opens a box under the summary for
+  follow-up questions about the video. Answers cite `[m:ss]` timestamps and
+  those seek the player too. It needs a finished summary to ask about, so it
+  stays disabled until one is there.
+- **Copy** — puts the summary on the clipboard as plain text.
+
 ## Install
 
 There is no store listing and no build step. Clone and load the folder.
@@ -39,9 +53,10 @@ which is a sign-in to them, not to this: see [PRIVACY.md](PRIVACY.md). Until a
 key is set, the panel says so and offers a link to the settings, rather than
 letting you start a summary that can only end in an error.
 
-The rest of the settings page is short: model, summary style, output length, an
-auto-summarise toggle that is off by default, a base URL field for the
-OpenAI-compatible provider, and **Preferred caption language** — a dropdown with
+The rest of the settings page is short: model, the summary style a panel opens
+with, output length, an auto-summarise toggle that is off by default, a base URL
+field for the OpenAI-compatible provider, and **Preferred caption language** —
+a dropdown with
 an "Automatic — whatever the video offers" entry and about two dozen named
 languages, set to English on a fresh install. It decides which caption track is
 used when a video offers several, and in doing so it usually decides which
@@ -124,6 +139,15 @@ Two things keep the bill boring: "Automatically summarise when I open a video"
 is off by default, so nothing is ever spent without a click, and you can set a
 hard spend limit on the key in your provider's console.
 
+A summary you have already paid for is not paid for twice. Finished summaries
+are kept per video and per style for as long as the browser is running, so
+coming back to a video, or switching back to a style you already ran, paints
+the stored copy and sends no request. The panel says **Cached summary** when it
+does, with a **Re-run** button when you want a fresh one. The cache is in
+memory only: it is gone when Chrome restarts, and it is never written to disk.
+Asking a follow-up about a restored summary does need a re-run first, because
+the conversation it continues lives in the service worker, not in the page.
+
 ## Limitations, stated up front
 
 - **It needs captions.** The extension reads the caption track YouTube already
@@ -140,6 +164,33 @@ hard spend limit on the key in your provider's console.
   Manifest V3. No Firefox or Safari port.
 - **It is a summary.** It compresses, and compression loses things. The
   timestamps exist so you can check it.
+
+## When it doesn't work
+
+**"YouTube would not hand over the transcript"**
+
+The video does have a caption track — YouTube listed it — but the request for
+the caption text came back empty. This happens often enough to be worth
+expecting. Open the video's own transcript panel once (**...more** under the
+description, then **Show transcript**) and press Summarize again; that is
+usually enough. Reloading the page and trying again also works. It is a
+restriction on YouTube's side, not a fault in the extension, and there is
+nothing it can do about it beyond asking again.
+
+**There is no Summarize button**
+
+YouTube serves several watch-page layouts and the button attaches to whichever
+one loaded. Reload the page first. If it is still missing, open
+`chrome://extensions`, check the extension is enabled and that its site access
+includes `youtube.com`, then reload the tab.
+
+**"The provider rejected your key"**
+
+The provider refused the key it was sent: it is wrong, revoked, or out of
+credit. Open the settings page and press **Test this key**, which reports what
+the provider said. Each provider keeps its own key, so a key that works on one
+is not used for another — check you are looking at the key for the provider
+currently selected, and that the account behind it still has credit.
 
 ## Privacy
 
@@ -221,11 +272,15 @@ file that ships is a file in the repository — what you read is what runs. That
 is deliberate: it makes the extension auditable by anyone who can read
 JavaScript, which matters for something that holds an API key.
 
-Run the tests (Node 18+, no install step):
+Run the tests (no install step):
 
 ```sh
-node --test test/     # or: npm test
+node --test     # or: npm test
 ```
+
+With no path after it, Node's test runner finds the suites in `test/` itself.
+Passing `test/` explicitly fails on current Node, where a positional argument
+is read as a glob pattern rather than a directory.
 
 They cover the pure logic: caption parsing, track selection, chunk boundaries,
 prompt assembly and delimiter stripping, markdown escaping and timestamp
@@ -246,9 +301,9 @@ src/providers/*.js       One adapter per provider: request shape, delta
                          extraction, error sentences
 src/lib/*.js             SSE parsing, transcript handling, chunking, prompts,
                          markdown rendering, PKCE for the OpenRouter sign-in
-src/options/*            This settings page
+src/options/*            The settings page: HTML, CSS and its script
 test/                    node --test suites and SSE fixtures
-docs/                    Design spec
+docs/                    Manual QA checklist and the screenshot above
 ```
 
 After changing anything, hit the reload arrow on the extension's card in
@@ -288,10 +343,6 @@ done
 Check `icon16.png` at actual size before committing — that is the one that has
 to survive being 16 pixels wide in a toolbar.
 
-## Licence
-
-MIT.
-
 ## Development harness
 
 `src/content/content.js` and `src/content/inject.js` need a browser, so they
@@ -317,3 +368,7 @@ look. The assertions live in `test/`, and the browser-only checks live in
 it and the extension declares no `web_accessible_resources`, so no page can
 reach those files. Delete the folder before packaging for a store listing if you
 would rather not ship it at all.
+
+## Licence
+
+MIT — the full text is in [LICENSE](LICENSE).

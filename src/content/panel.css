@@ -162,6 +162,11 @@ html[dark] .vse-button,
   color: #cc0000;
 }
 
+.vse-iconbtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .vse-icon {
   width: 18px;
   height: 18px;
@@ -231,6 +236,9 @@ html[dark] .vse-button,
 
 /* ------------------------------------------------------------ text buttons */
 
+/* .vse-stop deliberately has no colour of its own: the label already says "Stop",
+   and a red that passes contrast on the light chip fails it on the dark one
+   (2.5:1). Inheriting --vse-fg keeps the only way to abort a request readable. */
 .vse-textbtn {
   flex: none;
   padding: 4px 12px;
@@ -255,10 +263,6 @@ html[dark] .vse-button,
 
 html[dark] .vse-textbtn.vse-primary {
   color: #0f0f0f;
-}
-
-.vse-textbtn.vse-stop {
-  color: #cc0000;
 }
 
 /* -------------------------------------------------------------- the output */
@@ -288,7 +292,8 @@ html[dark] .vse-textbtn.vse-primary {
   margin-bottom: 0;
 }
 
-.vse-output h1,
+/* The renderer maps every `#`..`##` to h2 and everything deeper to h3, so
+   those two tags are the whole heading vocabulary. */
 .vse-output h2 {
   margin: 22px 0 8px;
   font-size: 1.5rem;
@@ -298,8 +303,7 @@ html[dark] .vse-textbtn.vse-primary {
   color: var(--vse-fg-dim);
 }
 
-.vse-output h3,
-.vse-output h4 {
+.vse-output h3 {
   margin: 16px 0 6px;
   font-size: 1.4rem;
   font-weight: 600;
@@ -329,13 +333,6 @@ html[dark] .vse-textbtn.vse-primary {
   font-weight: 600;
 }
 
-.vse-output blockquote {
-  margin: 10px 0;
-  padding: 2px 0 2px 12px;
-  border-left: 3px solid var(--vse-layer);
-  color: var(--vse-fg-dim);
-}
-
 .vse-output code {
   padding: 1px 4px;
   border-radius: 4px;
@@ -357,22 +354,11 @@ html[dark] .vse-textbtn.vse-primary {
   background: none;
 }
 
-.vse-output hr {
-  margin: 16px 0;
-  border: none;
-  border-top: 1px solid var(--vse-layer);
-}
-
-.vse-output a {
-  color: var(--vse-accent);
-}
-
 /* Timestamps read as interactive without shouting: monospace digits, tinted,
    a hover that says "this seeks". */
 .vse-ts {
   display: inline-block;
   padding: 0 5px;
-  margin-right: 4px;
   border: none;
   border-radius: 5px;
   background: var(--vse-chip);
@@ -546,7 +532,8 @@ html[dark] .vse-textbtn.vse-primary {
 
 @media (prefers-reduced-motion: reduce) {
   .vse-panel *,
-  .vse-button {
+  .vse-button,
+  .vse-button * {
     animation: none !important;
     transition: none !important;
   }

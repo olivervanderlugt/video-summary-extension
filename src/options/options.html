@@ -10,7 +10,7 @@
 <main class="page">
 
   <header class="head">
-    <h1>Summarise YouTube videos with <span class="mark">your own AI</span>.</h1>
+    <h1>Summarize YouTube videos with <span class="mark">your own AI</span>.</h1>
     <p class="sub">Your settings and your key stay on this computer. The only thing that ever leaves is the video transcript, sent to the provider you connect.</p>
   </header>
 
@@ -47,7 +47,7 @@
           <input id="key" type="password" class="grow mono" autocomplete="off" spellcheck="false" placeholder="" aria-describedby="tipKey">
           <button id="toggleKey" type="button" class="btn ghost" aria-pressed="false">Show</button>
         </div>
-        <p class="tip" id="tipKey">Kept on this computer, unencrypted — the same way Chrome keeps your saved passwords. Make a key just for this extension and put a spending limit on it.</p>
+        <p class="tip" id="tipKey">Kept on this computer, unencrypted — the same way Chrome keeps your saved passwords.</p>
         <p class="hint"><a id="keysLink" href="#" target="_blank" rel="noreferrer noopener">Where to get a key</a></p>
       </div>
 
@@ -98,7 +98,7 @@
     <div class="sec-head">
       <h2>Preferences</h2>
     </div>
-    <p class="note">All optional, and none of it final — you can change any of it later. Each provider keeps its own key, so switching never loses one.</p>
+    <p class="note">All optional, and none of it final. Each provider keeps its own key, so switching never loses one.</p>
 
     <div class="field">
       <div class="lbl-row">
@@ -130,7 +130,7 @@
     <div class="field">
       <div class="row tight">
         <input id="autoRun" type="checkbox" aria-describedby="autoRunWarn">
-        <label class="lbl inline" for="autoRun">Automatically summarise when I open a video</label>
+        <label class="lbl inline" for="autoRun">Automatically summarize when I open a video</label>
       </div>
       <p class="hint warn" id="autoRunWarn"><span class="warn-icon" aria-hidden="true">!</span> Leave this off unless you want to pay for every video you open, including ones you close straight away.</p>
     </div>
@@ -153,7 +153,7 @@
           <p>It is never written to <code>chrome.storage.sync</code>, so it is never uploaded to your Google account or copied to your other machines.</p>
           <p>The key is read only by the extension's background service worker, which is where every provider request is made. It is never handed to the YouTube page or the content script, so scripts running on youtube.com cannot see it.</p>
           <p>The only outbound requests this extension makes are to the provider you configured above. There is no server of ours, no analytics, and no telemetry of any kind.</p>
-          <p>What gets sent to that provider, each time you summarise: the video's title, channel, duration, chapter titles, and the text of its captions. Once sent, that data is governed by your provider's data-retention policy, not by anything this extension does.</p>
+          <p>What gets sent to that provider, each time you summarize: the video's title, channel, duration, chapter titles, and the text of its captions. Once sent, that data is governed by your provider's data-retention policy, not by anything this extension does.</p>
         </div>
       </details>
     </div>

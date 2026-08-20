@@ -164,7 +164,29 @@ async function load() {
   } catch {
     grantedOrigin = null;
   }
-  if (!PROVIDERS[settings.provider]) settings.provider = DEFAULTS.provider;
+  if (!PROVIDERS[settings.provider]) {
+    settings.provider = DEFAULTS.provider;
+    await persist();   // otherwise the content script keeps reading the bogus id
+  }
+}
+
+/**
+ * Storage can change under this page: a second options tab, or the worker
+ * writing a key after sign-in. The module-level `settings` would otherwise go
+ * stale and the next edit would write the old copy back over it.
+ */
+function watchStorage() {
+  chrome.storage.onChanged?.addListener(async (changes, area) => {
+    if (area !== 'local' || !changes.settings) return;
+    // Our own writes come back through here too; they carry what we already have.
+    if (JSON.stringify(changes.settings.newValue) === JSON.stringify(settings)) return;
+    await load();
+    renderProviders();
+    fill();
+    renderProviderFields();
+    showKeyView(!adapter().supportsSignIn);
+    refreshModels({ silent: true });
+  });
 }
 
 /**
@@ -199,6 +221,20 @@ function keyProviders() {
   return Object.entries(PROVIDERS).filter(([, p]) => !p.supportsSignIn);
 }
 
+/** Which provider the key view shows. It follows the stored one, unless that
+    one signs in rather than taking a key — then the view offers a default. */
+function keyViewProvider() {
+  if (!adapter().supportsSignIn) return settings.provider;
+  const withKey = keyProviders().find(([id]) => (settings.keys[id] || '').trim());
+  return (withKey || keyProviders()[0])[0];
+}
+
+/** Opening the key view only reveals it. Typing in it is the choice, and this
+    is where that choice becomes the stored provider. */
+function commitKeyProvider() {
+  settings.provider = keyViewProvider();
+}
+
 function renderProviders() {
   el.providerList.replaceChildren();
   for (const [id, p] of keyProviders()) {
@@ -211,7 +247,7 @@ function renderProviders() {
     radio.name = 'provider';
     radio.id = 'provider-' + id;
     radio.value = id;
-    radio.checked = id === settings.provider;
+    radio.checked = id === keyViewProvider();
     radio.addEventListener('change', () => {
       if (!radio.checked) return;
       settings.provider = id;
@@ -241,9 +277,10 @@ function showKeyView(on) {
 }
 
 function renderProviderFields() {
-  const p = adapter();
-  el.keyProviderName.textContent = p.label || settings.provider;
-  el.key.value = settings.keys[settings.provider] || '';
+  const shown = keyViewProvider();
+  const p = PROVIDERS[shown];
+  el.keyProviderName.textContent = p.label || shown;
+  el.key.value = settings.keys[shown] || '';
   el.key.placeholder = p.keyPlaceholder || 'API key';
 
   if (p.keysUrl) {
@@ -261,9 +298,10 @@ function renderProviderFields() {
   } else {
     say(el.baseUrlMsg, '');
     el.grantBtn.hidden = true;
+    el.testBtn.disabled = false;
   }
 
-  const radio = el.providerList.querySelector(`input[value="${CSS.escape(settings.provider)}"]`);
+  const radio = el.providerList.querySelector(`input[value="${CSS.escape(shown)}"]`);
   if (radio) radio.checked = true;
 
   say(el.testResult, '');
@@ -273,7 +311,7 @@ function renderProviderFields() {
 /** One status, in one place: the badge on the panel heading. */
 function updateState(testPassed) {
   const onSignIn = !el.signInView.hidden;
-  const hasKey = !!(settings.keys[settings.provider] || '').trim();
+  const hasKey = !!(settings.keys[onSignIn ? settings.provider : keyViewProvider()] || '').trim();
   el.connState.textContent = testPassed
     ? 'tested, works'
     : hasKey
@@ -350,10 +388,14 @@ function syncModelInputs(selected) {
 function validateBaseUrl() {
   const r = checkBaseUrl(el.baseUrl.value);
   if (r.error) {
-    say(el.baseUrlMsg, el.baseUrl.value.trim() ? r.error : '', 'err');
+    // Including the empty case. Saying nothing there left the page showing a
+    // tested, working key above a field with no server in it.
+    say(el.baseUrlMsg, r.error, 'err');
     el.grantBtn.hidden = true;
+    el.testBtn.disabled = true;
     return null;
   }
+  el.testBtn.disabled = false;
   if (r.local) {
     say(el.baseUrlMsg, 'Local server over plain http — fine on your own machine, but your API key travels unencrypted, so never point this at a remote host.', 'warn');
   } else {
@@ -404,6 +446,7 @@ async function requestOrigin(origin) {
 
 function wire() {
   el.key.addEventListener('input', () => {
+    commitKeyProvider();
     settings.keys[settings.provider] = el.key.value.trim();
     updateState(false);
     saveSoon();
@@ -416,15 +459,10 @@ function wire() {
     el.toggleKey.setAttribute('aria-pressed', String(show));
   });
 
-  // Taking the key path is a real choice: it needs a provider that wants a key.
+  // A disclosure, and nothing more: the stored provider is left alone until the
+  // user picks a radio or types a key.
   el.toKeyView.addEventListener('click', () => {
-    if (adapter().supportsSignIn) {
-      const withKey = keyProviders().find(([id]) => (settings.keys[id] || '').trim());
-      settings.provider = (withKey || keyProviders()[0])[0];
-      renderProviderFields();
-      save();
-      refreshModels({ silent: true });
-    }
+    renderProviderFields();
     showKeyView(true);
     el.key.focus();
   });
@@ -458,6 +496,7 @@ function wire() {
   });
 
   el.testBtn.addEventListener('click', async () => {
+    commitKeyProvider();
     await persist();
     el.testBtn.disabled = true;
     say(el.testResult, 'Testing…', 'busy');
@@ -473,8 +512,11 @@ function wire() {
   });
 
   el.baseUrl.addEventListener('input', () => {
+    commitKeyProvider();
+    // Keep the last URL that parsed. Storing a rejected one is how the worker
+    // ended up with a blank base URL and a default of api.openai.com.
+    if (!validateBaseUrl()) return;
     settings.baseUrl = el.baseUrl.value.trim();
-    validateBaseUrl();
     saveSoon();
   });
 
@@ -519,6 +561,19 @@ function wire() {
       settings.maxTokens = Math.round(n);
       saveSoon();
     }
+  });
+
+  // min and max on the input do nothing outside a form, so out-of-range typing
+  // used to vanish on blur. Clamp it and put the number that was kept on screen.
+  el.maxTokens.addEventListener('change', () => {
+    const n = Math.round(Number(el.maxTokens.value));
+    const kept = Number.isFinite(n) && n > 0
+      ? Math.min(32000, Math.max(256, n))
+      : settings.maxTokens;
+    el.maxTokens.value = kept;
+    if (kept === settings.maxTokens) return;
+    settings.maxTokens = kept;
+    save();
   });
 
   el.autoRun.addEventListener('change', () => {
@@ -612,6 +667,7 @@ async function init() {
   // everyone else gets the sign-in.
   showKeyView(!adapter().supportsSignIn);
   wire();
+  watchStorage();
   wireTips();
   wireTour();
   maybeStartTour();
@@ -640,7 +696,9 @@ function wireTips() {
     }
   };
 
-  if (window.matchMedia('(hover: none)').matches) {
+  // CSS handles anything that hovers, including a touchscreen laptop, which
+  // reports hover: hover with a coarse pointer. What is left has only taps.
+  if (!window.matchMedia('(hover: hover)').matches) {
     for (const { btn, tip } of tips) {
       btn.setAttribute('aria-expanded', 'false');
       btn.addEventListener('click', () => {
@@ -681,7 +739,7 @@ const TOUR_STEPS = [
   {
     target: 'prefsSection',
     title: 'The rest is optional',
-    body: 'Language, summary style, length and the rest all have working defaults. Change any of it now or later; nothing here is permanent.',
+    body: 'Caption language is the one worth a look: it decides which transcript is fetched, and so which language the summary comes back in. The rest have working defaults.',
   },
 ];
 
@@ -738,10 +796,14 @@ function endTour() {
   tourTarget = null;
   el.tour.hidden = true;
   // Focus was inside the card that just vanished; hand it back to the page.
-  if (returnTo) {
-    const focusable = returnTo.querySelector('input, select, button, a[href], summary');
-    if (focusable) focusable.focus();
-  }
+  // The "i" is first in DOM order in every one of these sections, and it is not
+  // what the step was about. A docked step has no target, so fall back to the
+  // first control on the page that is actually on screen.
+  const scope = returnTo || document;
+  const focusable = Array.from(
+    scope.querySelectorAll('input, select, button:not(.info), a[href], summary')
+  ).find((node) => node.offsetParent !== null);
+  if (focusable) focusable.focus();
   if (!settings.onboardingDone) {
     settings.onboardingDone = true;
     persist();   // silent: finishing the tour is not an edit the user made

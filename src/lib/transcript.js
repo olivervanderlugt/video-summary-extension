@@ -68,18 +68,12 @@ export function parseJson3(json) {
     };
 
     // Auto-generated tracks emit rolling text: each event repeats the previous
-    // one as a prefix. Keep the longer, drop the redundant twin.
+    // one as a prefix, always growing. Keep the longer, drop the redundant twin.
     const prev = cues[cues.length - 1];
-    if (prev) {
-      if (isContinuation(prev.text, text)) {
-        prev.text = text;
-        prev.d = Math.max(prev.d, cue.t + cue.d - prev.t);
-        continue;
-      }
-      if (isContinuation(text, prev.text)) {
-        prev.d = Math.max(prev.d, cue.t + cue.d - prev.t);
-        continue;
-      }
+    if (prev && isContinuation(prev.text, text)) {
+      prev.text = text;
+      prev.d = Math.max(prev.d, cue.t + cue.d - prev.t);
+      continue;
     }
     cues.push(cue);
   }
@@ -108,6 +102,7 @@ export function pickTrack(tracks, prefs = {}) {
     (lang && exact(manual)) ||
     (lang && exact(auto)) ||
     (lang && sameBase(manual)) ||
+    (lang && sameBase(auto)) ||
     manual.find((t) => base(t.languageCode) === 'en') ||
     auto.find((t) => base(t.languageCode) === 'en') ||
     manual[0] ||
@@ -147,14 +142,23 @@ export function stripDelimiters(text) {
   // and can form a fresh delimiter. `</<transcript>transcript>` collapses to a
   // working `</transcript>` after a single replace, which is exactly how a
   // crafted caption would close the trust block and start giving instructions.
-  // Repeat until the text stops changing.
+  // Repeat until the text stops changing — but capped: an unbounded loop is
+  // O(n^2) on crafted input, and ~40k nested pairs freeze the service worker.
+  // Real nesting converges in one or two passes; return what we have after 8.
   let out = String(text ?? '');
-  let previous;
-  do {
-    previous = out;
-    out = out.replace(DELIM_RE, '');
-  } while (out !== previous);
-  return out;
+  for (let i = 0; i < 8; i++) {
+    const next = out.replace(DELIM_RE, '');
+    if (next === out) return out;
+    out = next;
+  }
+
+  // Still nesting after 8 passes means the input was built to outlast the loop,
+  // not that a video happened to say "</transcript>" nine times over. Capping
+  // alone would trade a slow strip for a successful escape, which is the one
+  // outcome this function exists to prevent. Neutralise every `<` in a single
+  // linear pass instead: no delimiter can form without one, and legitimate
+  // captions never reach this branch.
+  return DELIM_RE.test(out) ? out.replace(/</g, '\uFF1C') : out;
 }
 
 /**

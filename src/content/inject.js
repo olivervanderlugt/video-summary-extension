@@ -139,7 +139,10 @@
   // The UI is localised (the profile this was measured on was Dutch: "Transcript
   // tonen"). Matching text is therefore a heuristic; the panel's target-id is the
   // reliable signal, so text matching is only used to find the button that opens it.
-  const TRANSCRIPT_WORD = /transcript|transkript|transcrip|字幕|文字起こし|стенограмм|транскрип/i;
+  // Russian YouTube says "Показать текст видео", not "стенограмма" — the word
+  // that was here matched nothing on the real UI. The rest were simply missing.
+  const TRANSCRIPT_WORD =
+    /transcript|transkript|transcrip|字幕|文字起こし|스크립트|стенограмм|транскрип|текст видео|chép lời|प्रतिलेख|ट्रांसक्रिप्ट|النص/i;
 
   /** "1:23" / "12:34:56" / "-0:05" → seconds.
    *  Deliberate twin of parseTimestamp in src/lib/transcript.js — do NOT "unify"
@@ -199,14 +202,19 @@
     let panel = document.querySelector(PANEL_SELECTOR);
     const wasVisible = panel ? panel.getAttribute('visibility') : null;
     const openedByUs = !panel || (wasVisible || '').indexOf('HIDDEN') !== -1 || wasVisible === null;
+    let expandedByUs = false;
 
     try {
       if (!panel || openedByUs) {
         // The button lives under the collapsed description on most layouts.
+        // `is-expanded` is how we know a description the user opened themselves
+        // is not ours to close again in the finally.
+        const expander = document.querySelector('#description-inline-expander');
         const expand = document.querySelector('#description-inline-expander #expand, tp-yt-paper-button#expand');
-        if (expand) {
+        if (expand && !(expander && expander.hasAttribute('is-expanded'))) {
           try {
             expand.click();
+            expandedByUs = true;
             await sleep(120);
           } catch {
             /* description already open */
@@ -227,15 +235,19 @@
       // YouTube may virtualise this list, rendering only the rows in view. A
       // silently truncated transcript is worse than no transcript: it produces a
       // confident summary of the first minute of a long video. Scroll the list
-      // until it stops growing, then refuse the strategy if it still falls short
-      // of the video's runtime — the video element knows the duration even when
-      // the player response did not.
-      // The video element is the better source — it is right even when the
-      // player response was unreadable — but `duration` is NaN until metadata
-      // loads, so fall back to the runtime the caller already knows.
+      // until it stops growing.
+      //
+      // Neither runtime source can be trusted alone: `video.duration` is NaN
+      // until metadata loads and is the AD's length during a pre-roll (a 15s
+      // runtime ends the scroll loop on its first pass and keeps a virtualised
+      // half-transcript), while the hint is missing when the player response was
+      // unreadable. Whichever is longer is the video.
       const video = document.querySelector('.html5-main-video, video');
       const fromElement = Number(video && video.duration);
-      const runtime = Number.isFinite(fromElement) && fromElement > 0 ? fromElement : Number(runtimeHint) || 0;
+      const runtime = Math.max(
+        Number.isFinite(fromElement) && fromElement > 0 ? fromElement : 0,
+        Number(runtimeHint) || 0
+      );
       const lastT = (list) => parseTimestamp(list[list.length - 1]?.querySelector('.segment-timestamp')?.textContent) || 0;
       const scroller =
         panel.querySelector('#segments-container') ||
@@ -256,9 +268,12 @@
         if (segments.length <= before) break; // stopped growing: this is all there is
       }
 
-      if (runtime > 0 && lastT(segments) < runtime * 0.75) {
-        // Still short. Let the next strategy try rather than shipping a partial
-        // transcript dressed up as the whole video.
+      // Only refuse when the panel is grossly short — plenty of complete
+      // transcripts end well before the runtime does (outros, music, credits),
+      // and rejecting those sent a usable transcript to the next strategy for
+      // nothing. Genuine truncation still reaches the user: the worker warns
+      // with PARTIAL_TRANSCRIPT on exactly this measurement.
+      if (runtime > 0 && lastT(segments) < runtime * 0.25) {
         return null;
       }
 
@@ -281,13 +296,17 @@
     } catch {
       return null;
     } finally {
-      // Leave the user's UI as we found it.
+      // Leave the user's UI as we found it — the description we expanded included.
       try {
         if (panel && openedByUs) {
           const close = panel.querySelector('#visibility-button button, #dismiss-button button');
           if (close) close.click();
           else if (wasVisible) panel.setAttribute('visibility', wasVisible);
           else panel.setAttribute('visibility', 'ENGAGEMENT_PANEL_VISIBILITY_HIDDEN');
+        }
+        if (expandedByUs) {
+          const collapse = document.querySelector('#description-inline-expander #collapse, tp-yt-paper-button#collapse');
+          if (collapse) collapse.click();
         }
       } catch {
         /* restoring is best-effort */
@@ -413,7 +432,7 @@
     if (d.isLive || d.isLiveContent) {
       throw errored('LIVE', 'This is a live stream, and live streams have no finished caption track yet.');
     }
-    throw errored('NO_CAPTIONS', 'This video has no caption track, so there is no transcript to summarise.');
+    throw errored('NO_CAPTIONS', 'This video has no caption track, so there is no transcript to summarize.');
   }
 
   /**

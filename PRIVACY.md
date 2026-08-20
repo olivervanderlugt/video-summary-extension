@@ -5,7 +5,7 @@ Last updated: 2026-08-20
 Video Summary is a browser extension that runs entirely on your machine. It has
 no server, no account, and no operator with access to your data.
 
-## What we collect
+## What is collected
 
 Nothing. There is no backend to collect anything with. No analytics, no crash
 reporting, no usage counters, no unique identifier, no phone-home on install or

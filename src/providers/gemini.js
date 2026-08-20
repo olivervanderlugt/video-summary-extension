@@ -1,3 +1,5 @@
+import { errorDetail, statusError } from './errors.js';
+
 export const id = 'gemini';
 export const label = 'Google Gemini';
 export const defaultModel = 'gemini-2.5-flash';
@@ -37,7 +39,7 @@ export function buildModelsRequest({ key, baseUrl }) {
 }
 
 export function parseModels(json) {
-  return (json?.models || [])
+  return (Array.isArray(json?.models) ? json.models : [])
     .filter((m) => (m?.supportedGenerationMethods || []).includes('generateContent'))
     .map((m) => String(m.name || '').replace(/^models\//, ''))
     .filter(Boolean)
@@ -49,7 +51,7 @@ const BLOCKED_FINISH = new Set(['SAFETY', 'RECITATION', 'PROHIBITED_CONTENT', 'B
 export function extractDelta(event) {
   const blocked = event?.promptFeedback?.blockReason;
   if (blocked) {
-    throw new Error(`Gemini refused to summarise this transcript (${blocked}) — try a different provider or model.`);
+    throw new Error(`Gemini refused to summarize this transcript (${blocked}) — try a different provider or model.`);
   }
   const candidate = event?.candidates?.[0];
   const finish = candidate?.finishReason;
@@ -60,26 +62,21 @@ export function extractDelta(event) {
 }
 
 export function parseError(status, bodyText) {
-  let detail = '';
-  try {
-    detail = JSON.parse(bodyText)?.error?.message || '';
-  } catch {
-    detail = '';
+  const detail = errorDetail(bodyText);
+  // Google answers an invalid or missing key with 400 API_KEY_INVALID, not 401.
+  // Left generic, the commonest first-run mistake loses its "Open settings" button.
+  const badKey =
+    /API_KEY_INVALID|API_KEY_MISSING/.test(String(bodyText || '')) ||
+    (/api[ _]?key/i.test(detail) && /invalid|not valid|expired|missing/i.test(detail));
+  if (status === 400 && badKey) {
+    return {
+      code: 'auth',
+      message: `Google rejected the API key (${detail || 'API_KEY_INVALID'}) — create a fresh key at ${keysUrl} and paste it into the extension options.`,
+    };
   }
-  if (status === 401 || status === 403) {
-    return { code: 'auth', message: 'Google rejected your API key — create a fresh key at aistudio.google.com and paste it into the extension options.' };
-  }
-  if (status === 429) {
-    return { code: 'rate_limit', message: 'Google is rate limiting this key — wait a minute and summarise again, or switch to a Flash model.' };
-  }
-  if (status === 400) {
-    return { code: 'bad_request', message: `Google rejected the request${detail ? `: ${detail}` : ''} — check the key and model in the extension options, or try a shorter video.` };
-  }
-  if (status === 404) {
-    return { code: 'model', message: 'Google does not recognise the selected model — pick a different one in the extension options.' };
-  }
-  if (status >= 500) {
-    return { code: 'server', message: 'Google is having trouble right now — wait a moment and try again.' };
-  }
-  return { code: 'unknown', message: `Google returned an unexpected error (HTTP ${status})${detail ? `: ${detail}` : ''} — try again, and check status.cloud.google.com if it keeps happening.` };
+  return statusError(status, detail, {
+    name: 'Google',
+    keysUrl,
+    statusUrl: 'status.cloud.google.com',
+  });
 }

@@ -1,3 +1,5 @@
+import { errorDetail, statusError } from './errors.js';
+
 export const id = 'anthropic';
 export const label = 'Anthropic (Claude)';
 export const defaultModel = 'claude-opus-5';
@@ -37,7 +39,7 @@ export function buildModelsRequest({ key, baseUrl }) {
 }
 
 export function parseModels(json) {
-  return (json?.data || [])
+  return (Array.isArray(json?.data) ? json.data : [])
     .map((m) => m?.id)
     .filter((x) => typeof x === 'string' && x)
     .sort();
@@ -54,26 +56,9 @@ export function extractDelta(event) {
 }
 
 export function parseError(status, bodyText) {
-  let detail = '';
-  try {
-    detail = JSON.parse(bodyText)?.error?.message || '';
-  } catch {
-    detail = '';
-  }
-  if (status === 401 || status === 403) {
-    return { code: 'auth', message: 'Anthropic rejected your API key — paste a current key from console.anthropic.com into the extension options.' };
-  }
-  if (status === 429) {
-    return { code: 'rate_limit', message: 'Anthropic is rate limiting this key — wait a minute and summarise again, or use a smaller model.' };
-  }
-  if (status === 400) {
-    return { code: 'bad_request', message: `Anthropic rejected the request${detail ? `: ${detail}` : ''} — this video may be too long for the selected model, so try a shorter one or a larger-context model.` };
-  }
-  if (status === 404) {
-    return { code: 'model', message: 'Anthropic does not recognise the selected model — pick a different one in the extension options.' };
-  }
-  if (status >= 500) {
-    return { code: 'server', message: 'Anthropic is having trouble right now — wait a moment and try again.' };
-  }
-  return { code: 'unknown', message: `Anthropic returned an unexpected error (HTTP ${status})${detail ? `: ${detail}` : ''} — try again, and check status.anthropic.com if it keeps happening.` };
+  return statusError(status, errorDetail(bodyText), {
+    name: 'Anthropic',
+    keysUrl,
+    statusUrl: 'status.anthropic.com',
+  });
 }

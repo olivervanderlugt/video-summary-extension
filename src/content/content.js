@@ -26,12 +26,15 @@
   const MOUNT_BUDGET = 20; // ~10s of retries before the button falls back to the panel header
   const MOUNT_INTERVAL = 500;
 
+  // Ids and labels copied verbatim from MODES in src/lib/prompt.js, which is the
+  // source of truth for what each mode actually does. A classic content script
+  // cannot import that module, so this list has to be kept in step by hand.
   const MODES = [
-    { id: 'brief', label: 'Brief', hint: 'A few sentences' },
-    { id: 'detailed', label: 'Detailed', hint: 'Full walkthrough' },
-    { id: 'bullets', label: 'Bullets', hint: 'Scannable points' },
-    { id: 'eli5', label: 'Explain simply', hint: 'No jargon' },
-    { id: 'quotes', label: 'Key quotes', hint: 'In their words' },
+    { id: 'brief', label: 'Brief' },
+    { id: 'detailed', label: 'Detailed' },
+    { id: 'bullets', label: 'Bullets' },
+    { id: 'eli5', label: 'Explain simply' },
+    { id: 'quotes', label: 'Key quotes' },
   ];
 
   // One sentence and a fix, never a stack trace. `calm: true` means "this is a
@@ -41,7 +44,7 @@
     NO_CAPTIONS: {
       calm: true,
       title: 'No captions on this video',
-      body: 'There is no caption track to read, so there is nothing to summarise. Videos with captions — auto-generated ones count — work fine.',
+      body: 'There is no caption track to read, so there is nothing to summarize. Videos with captions — auto-generated ones count — work fine.',
     },
     LIVE: {
       calm: true,
@@ -49,9 +52,8 @@
       body: 'Live streams have no finished caption track yet. Try again once the recording is published.',
     },
     TRACK_EMPTY: {
-      calm: true,
       title: 'The caption track came back empty',
-      body: 'YouTube listed a caption track but returned nothing for it. Reloading the page usually fixes this.',
+      body: 'YouTube listed a caption track but returned nothing for it. Try again, or reload the page.',
     },
     NO_TRANSCRIPT: {
       title: 'YouTube would not hand over the transcript',
@@ -60,6 +62,15 @@
     NO_PLAYER: { title: "Couldn't read the video data", body: 'Reload the page and try again.' },
     PAGE_TIMEOUT: { title: 'The page stopped responding', body: 'Reload the page and try again.' },
     NO_KEY: { title: 'No API key configured', action: 'options', body: 'Add your provider key in the extension settings.' },
+    NO_BASE_URL: {
+      title: 'No server address configured',
+      action: 'options',
+      body: 'The OpenAI-compatible provider needs the address of your server. Nothing is sent until you enter one.',
+    },
+    bad_response: {
+      title: "The provider sent something unreadable",
+      body: 'That address answered, but not with what an AI provider sends. Check the server address in settings.',
+    },
     // These five are the codes the provider adapters emit verbatim. They are
     // lowercase on purpose — matching them is what puts the "Open settings"
     // button under a rejected key, which is the error where it is the whole fix.
@@ -97,13 +108,6 @@
 
   const el = {}; // mounted nodes, rebuilt whenever YouTube replaces the DOM
 
-  const alive = () => {
-    try {
-      return !!(chrome.runtime && chrome.runtime.id);
-    } catch {
-      return false;
-    }
-  };
 
   // ------------------------------------------------------------- utilities
 
@@ -274,6 +278,9 @@
   function buildPanel() {
     const panel = node('section', 'vse-panel vse-collapsed');
     panel.id = 'vse-panel';
+    // The panel mounts at the head of #secondary-inner — after the whole primary
+    // column in tab order. Focusable so the Summarize click can send you there.
+    panel.tabIndex = -1;
     panel.setAttribute('role', 'region');
     panel.setAttribute('aria-label', 'Video summary');
 
@@ -287,7 +294,6 @@
     for (const m of MODES) {
       const opt = node('option', null, m.label);
       opt.value = m.id;
-      opt.title = m.hint;
       modeSelect.appendChild(opt);
     }
     modeSelect.value = state.mode;
@@ -310,6 +316,9 @@
     header.appendChild(actions);
 
     const status = node('div', 'vse-status');
+    // Notes land here — including the one you get for asking before summarising,
+    // which a screen reader would otherwise never announce (it is not aria-live).
+    status.setAttribute('role', 'status');
     status.hidden = true;
 
     const body = node('div', 'vse-body');
@@ -324,6 +333,8 @@
     const footer = node('div', 'vse-footer');
     footer.hidden = true;
     const thread = node('div', 'vse-thread');
+    // Ask answers cite [m:ss] too, and they render here, not in .vse-output.
+    thread.addEventListener('click', onOutputClick);
     const form = node('form', 'vse-askform');
     const input = node('textarea', 'vse-input');
     input.rows = 2;
@@ -419,6 +430,10 @@
       if (state.html || state.text) paint();
       else showCachedOrIdle();
     }
+    // A re-mount mid-run rebuilt an empty status bar; without this the spinner
+    // and the Stop button are gone until the run happens to send its next status.
+    if (state.running) busyStatus(state.asking ? 'Thinking…' : 'Summarizing…');
+    syncButtons();
   }
 
   // YouTube replaces chunks of the watch page at will; re-mount when our nodes
@@ -482,12 +497,26 @@
     if (!out) return;
     if (state.html) out.innerHTML = state.html;
     else if (state.text) out.textContent = state.text; // pre-render fallback: plain text is always safe
+    syncButtons();
   }
 
   function clearOutput() {
     if (!el.output) return;
     el.output.textContent = '';
     el.output.parentNode?.querySelector('.vse-notice')?.remove();
+    syncButtons();
+  }
+
+  /** Copy with nothing to copy would copy the idle placeholder; Ask with no
+   *  summary in the worker can only be answered with a note. Both say so by
+   *  being unavailable rather than by failing after the click. */
+  function syncButtons() {
+    if (el.copyBtn) el.copyBtn.disabled = !(state.html || state.text);
+    // Enabled whenever a summary is displayed, including a cached one. A cache
+    // hit has no transcript loaded in the worker, so Ask cannot answer — but
+    // disabling it here would hide the note that explains why, and would also
+    // remove the only way to reopen a collapsed panel without re-running.
+    if (el.askBtn) el.askBtn.disabled = !(state.html || state.text);
   }
 
   function setStatus(kind, text, extras) {
@@ -525,6 +554,10 @@
 
   function renderError(code, message) {
     const info = ERRORS[code] || ERRORS.UNKNOWN;
+    // A run that ended badly leaves no session in the worker worth reusing. Drop
+    // the "already begun" claim so Try again posts a fresh `begin` instead of
+    // waiting forever for a `fetchTrack` nobody is going to send.
+    state.begunFor = null;
     clearOutput();
     hideStatus();
     const box = node('div', `vse-error${info.calm ? ' vse-error-calm' : ''}`);
@@ -562,7 +595,7 @@
     }
 
     box.appendChild(
-      node('p', 'vse-idle-text', `Summarise this video (${labelFor(state.mode).toLowerCase()}) using your own API key.`)
+      node('p', 'vse-idle-text', `Summarize this video (${labelFor(state.mode).toLowerCase()}) using your own API key.`)
     );
     box.appendChild(textButton('Summarize', () => start({}), 'vse-primary'));
     el.output.appendChild(box);
@@ -636,7 +669,7 @@
       if (msg.stage === 'section' && detail && detail.total) {
         busyStatus(`Reading section ${detail.index} of ${detail.total}…`);
       } else {
-        busyStatus('Summarising…');
+        busyStatus('Summarizing…');
       }
     } else if (msg.type === 'render') {
       if (state.asking) {
@@ -730,7 +763,7 @@
         state.transcript = payload;
       }
       if (!fresh(runId)) return;
-      busyStatus('Summarising…');
+      busyStatus('Summarizing…');
       state.runPosted = true;
       post(runMessage(payload));
     } catch (err) {
@@ -778,6 +811,7 @@
     paint();
     hideStatus();
     state.summarisedFor = state.videoId;
+    syncButtons(); // Ask only becomes available once the worker holds a summary
     cacheSet(state.videoId, state.runMode || state.mode, { html: state.html, text: state.text });
   }
 
@@ -792,12 +826,14 @@
   // -------------------------------------------------------------- run flow
 
   function onSummarizeClick() {
-    if (!state.expanded) {
-      expand();
-      if (state.html || state.text) {
-        paint();
-        return;
-      }
+    const wasExpanded = state.expanded;
+    if (!wasExpanded) expand();
+    // Keyboard users land in the panel instead of at the far end of tab order.
+    // Deliberately here and not in expand(), so auto-run cannot steal focus.
+    if (el.panel) el.panel.focus();
+    if (!wasExpanded && (state.html || state.text)) {
+      paint();
+      return;
     }
     if (state.running) return;
     if (state.html || state.text) {
@@ -848,19 +884,28 @@
     state.firstPaintPending = true;
     if (el.button) el.button.classList.add('vse-busy');
     if (el.output) el.output.setAttribute('aria-busy', 'true');
+    // The idle call to action would otherwise sit under the spinner for the whole
+    // transcript fetch, full colour and ignoring clicks. Only the box goes — a
+    // clearOutput() here would blank the body for the entire Re-run path.
+    el.output?.querySelector('.vse-idle')?.remove();
+    syncButtons();
 
     busyStatus('Reading transcript…');
 
     let head;
     try {
-      head = await pageCall('transcript', { videoId });
+      // 40s, matching fetchTrack: the page-side fallback chain spends 19.74s of
+      // fixed timers against the default 20s budget and would be cut off mid-chain.
+      head = await pageCall('transcript', { videoId }, 40000);
     } catch (err) {
-      if (!fresh(runId)) return finishRun();
+      // A stale run must never touch the run that replaced it: finishRun() is
+      // global and would clear the live run's flag.
+      if (!fresh(runId)) return;
       finishRun();
       renderError(err.code, err.message);
       return;
     }
-    if (!fresh(runId)) return finishRun();
+    if (!fresh(runId)) return;
 
     // The page returns EITHER a caption track list (the worker then picks one and
     // asks us to fetch it) OR, when no track was usable, cues it already scraped.
@@ -885,11 +930,18 @@
     if (t.cues || (!needBegin && t.json3)) {
       // Nothing left to fetch — a re-run with a different mode, or cues the page
       // scraped without any caption track to choose from.
-      busyStatus('Summarising…');
+      busyStatus('Summarizing…');
       state.runPosted = true;
       post(runMessage(t));
+    } else if (!needBegin) {
+      // Neither message went out and only `begin` can produce a 'fetchTrack', so
+      // there is nothing in flight: the panel would spin until a reload.
+      // renderError() drops `begunFor`, so Try again starts the session over.
+      finishRun();
+      renderError('TRACK_EMPTY');
+      return;
     }
-    // Otherwise: wait for the worker's 'fetchTrack' reply.
+    // Otherwise: `begin` is out — wait for the worker's 'fetchTrack' reply.
   }
 
   function finishRun() {
@@ -943,7 +995,7 @@
     if (state.summarisedFor !== state.videoId) {
       // The worker holds the transcript per connection; asking before a summary
       // has nothing to answer from. Say so instead of silently doing nothing.
-      setStatus('note', 'Summarise the video first, then ask about it.');
+      setStatus('note', 'This summary came from cache. Press Re-run first, then ask.');
       return;
     }
 

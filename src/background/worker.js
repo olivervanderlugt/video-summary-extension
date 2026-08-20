@@ -34,6 +34,8 @@ const DEFAULTS = {
 // providers reject it outright, and the ones that don't produce a summary that
 // quietly ignores the middle of the video. Above the threshold we map-reduce.
 const SINGLE_PASS_CHARS = 100_000;
+// The provider codes worth one more attempt; everything else is a real answer.
+const RETRYABLE = new Set(['rate_limit', 'server']);
 const RENDER_INTERVAL_MS = 80;
 
 async function loadSettings() {
@@ -59,7 +61,18 @@ function activeModel(settings, adapter) {
  */
 function activeBaseUrl(settings, adapter) {
   if (adapter.fixedBaseUrl) return adapter.fixedBaseUrl; // not user-supplied, so not user-redirectable
-  return adapter.requiresBaseUrl ? (settings.baseUrl || '').trim() : '';
+  if (!adapter.requiresBaseUrl) return '';
+  const baseUrl = (settings.baseUrl || '').trim();
+  // Fail closed. An adapter that asks for a base URL must never fall back to
+  // another vendor's default: that ships the key and the whole transcript to a
+  // company the user never picked, over a host permission we always hold.
+  if (!baseUrl) {
+    throw new AppError(
+      'NO_BASE_URL',
+      `${adapter.label} needs a Base URL. Open the extension settings and enter the address of your server — nothing is sent until you do.`
+    );
+  }
+  return baseUrl;
 }
 
 class AppError extends Error {
@@ -100,6 +113,7 @@ async function* streamCompletion({ settings, adapter, system, messages, signal }
     key,
     model: activeModel(settings, adapter),
     baseUrl: activeBaseUrl(settings, adapter),
+    requiresBaseUrl: !!adapter.requiresBaseUrl,
     system,
     messages,
     maxTokens: Number(settings.maxTokens) || DEFAULTS.maxTokens,
@@ -259,7 +273,13 @@ class Session {
       const settings = await loadSettings();
       const adapter = getProvider(settings.provider);
 
-      const cues = Array.isArray(readyCues) && readyCues.length ? readyCues : parseJson3(json3);
+      // Ready-made cues mean the page fell back to scraping the transcript panel
+      // or get_transcript, and both of those only ever exist for auto-captions.
+      // The page reports `isAuto` at the top level of its own reply, not inside
+      // `trackInfo`, so the flag never reaches us — telling the model the
+      // captions are human-authored, which stops it flagging misheard names.
+      const scraped = Array.isArray(readyCues) && readyCues.length > 0;
+      const cues = scraped ? readyCues : parseJson3(json3);
       if (!cues.length) {
         throw new AppError(
           'TRACK_EMPTY',
@@ -269,7 +289,11 @@ class Session {
       this.cues = cues;
       this.transcriptText = cuesToText(cues);
 
-      const meta = { ...this.meta, isAuto: !!trackInfo?.isAuto, lang: trackInfo?.languageCode };
+      const meta = {
+        ...this.meta,
+        isAuto: scraped || !!trackInfo?.isAuto,
+        lang: trackInfo?.languageCode,
+      };
 
       // A transcript that stops long before the video does is the dangerous
       // failure: the summary reads as complete and is not. The panel-scraping
@@ -354,15 +378,26 @@ class Session {
     for (const chunk of chunks) {
       this.status('section', { index: chunk.index + 1, total: chunks.length });
       const text = cuesToText(chunk.cues);
-      const partial = await collect(
-        streamCompletion({
-          settings,
-          adapter,
-          system,
-          messages: [{ role: 'user', content: buildChunkPrompt({ meta, chunk, transcriptText: text }) }],
-          signal: controller.signal,
-        })
-      );
+      // `mode` matters here too: without it the map pass paraphrases, and the
+      // reduce pass then asks for verbatim quotes from notes that hold none.
+      const messages = [
+        { role: 'user', content: buildChunkPrompt({ meta, chunk, transcriptText: text, mode }) },
+      ];
+      const run = () =>
+        collect(streamCompletion({ settings, adapter, system, messages, signal: controller.signal }));
+
+      let partial;
+      try {
+        partial = await run();
+      } catch (err) {
+        // One retry, and only for the two failures that are usually transient.
+        // No sleep: generating the earlier chunks already spaced the calls out.
+        // Never a placeholder — a summary that reads complete and is not is the
+        // worst thing this can ship, so a second failure fails the whole run.
+        if (!RETRYABLE.has(err?.code)) throw err;
+        this.status('section', { index: chunk.index + 1, total: chunks.length, retry: true });
+        partial = await run();
+      }
       partials.push(partial);
     }
 
@@ -546,10 +581,19 @@ async function listModels(settings) {
   const key = activeKey(settings);
   if (!key) return { ok: false, code: 'NO_KEY', message: 'Add an API key first.' };
 
-  const { url, headers } = adapter.buildModelsRequest({
-    key,
-    baseUrl: activeBaseUrl(settings, adapter),
-  });
+  let url;
+  let headers;
+  try {
+    ({ url, headers } = adapter.buildModelsRequest({
+      key,
+      baseUrl: activeBaseUrl(settings, adapter),
+      requiresBaseUrl: !!adapter.requiresBaseUrl,
+    }));
+  } catch (err) {
+    // A missing or unusable base URL is a settings problem, not a crash: the
+    // options page's Test button must say what to fix.
+    return { ok: false, ...toUserError(err) };
+  }
   let response;
   try {
     response = await fetch(url, { headers });
@@ -565,7 +609,26 @@ async function listModels(settings) {
     const { code, message } = adapter.parseError(response.status, body);
     return { ok: false, code, message };
   }
-  const models = adapter.parseModels(await response.json());
+  // A base URL pointing at an HTML page answers 200 with a body json() rejects.
+  let json;
+  try {
+    json = await response.json();
+  } catch {
+    return {
+      ok: false,
+      code: 'bad_response',
+      message: 'That URL answered, but not with JSON. Check the base URL in the extension options — it should be the API root, not a web page.',
+    };
+  }
+  if (!json || typeof json !== 'object') {
+    // A `null` body parses fine and would otherwise be reported as "Key works — 0 models".
+    return {
+      ok: false,
+      code: 'bad_response',
+      message: 'That URL answered, but with nothing that looks like a model list. Check the base URL in the extension options.',
+    };
+  }
+  const models = adapter.parseModels(json);
   return { ok: true, models };
 }
 

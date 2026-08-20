@@ -3,9 +3,10 @@
  * the service worker and under `node --test` as well as in the content script.
  *
  * The input is model output derived from an untrusted transcript, so EVERY
- * character of text is escaped before any tag is emitted. Supported: `##`/`###`
- * headings, `-`/`*` bullets (one level of nesting), `1.` ordered lists,
- * `**bold**`, `*italic*`, `` `code` ``, paragraphs. Everything else is literal.
+ * character of text is escaped before any tag is emitted. Supported: `#` to
+ * `######` headings, `-`/`*` bullets (one level of nesting), `1.` ordered lists,
+ * ``` fenced code blocks, `**bold**`, `*italic*`, `` `code` ``, paragraphs.
+ * Everything else is literal.
  *
  * It also renders a live token stream, so it must tolerate a document cut off
  * mid-token: an unterminated `**`, a half-typed heading, a dangling `[1:`.
@@ -34,7 +35,10 @@ function inline(text) {
     .join('');
 }
 
-const HEADING = /^(#{2,6})\s*(.*)$/;
+// `#` renders as h2, not h1: this panel is injected into someone else's page
+// and must not open a second top-level heading in it.
+const HEADING = /^(#{1,6})\s*(.*)$/;
+const FENCE = /^\s*(?:```|~~~)/;
 const BULLET = /^(\s*)[-*+]\s+(.*)$/;
 const ORDERED = /^(\s*)\d+[.)]\s+(.*)$/;
 
@@ -48,6 +52,7 @@ export function renderMarkdown(text) {
   /** @type {string[]} */
   const lists = []; // open list tags, innermost last
   let para = [];
+  let inFence = false;
 
   const flushPara = () => {
     if (para.length) out.push(`<p>${para.map(inline).join(' ')}</p>`);
@@ -58,6 +63,22 @@ export function renderMarkdown(text) {
   };
 
   for (const line of lines) {
+    // Fences first: a blank line inside a code block is part of the code.
+    if (FENCE.test(line)) {
+      if (inFence) out.push('</code></pre>');
+      else {
+        flushPara();
+        closeLists();
+        out.push('<pre><code>');
+      }
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) {
+      out.push(escapeHtml(line));
+      continue;
+    }
+
     if (!line.trim()) {
       flushPara();
       closeLists();
@@ -68,7 +89,7 @@ export function renderMarkdown(text) {
     if (h) {
       flushPara();
       closeLists();
-      const tag = h[1].length === 2 ? 'h2' : 'h3';
+      const tag = h[1].length <= 2 ? 'h2' : 'h3';
       out.push(`<${tag}>${inline(h[2])}</${tag}>`);
       continue;
     }
@@ -101,6 +122,8 @@ export function renderMarkdown(text) {
     para.push(line.trim());
   }
 
+  // A stream cut off inside a fence still has to close its own tags.
+  if (inFence) out.push('</code></pre>');
   flushPara();
   closeLists();
   return out.join('\n');
