@@ -219,3 +219,19 @@ test('caption provenance has three states, not two', () => {
   assert.match(line({}), /unknown/, 'an unknown source must not be asserted either way');
   assert.ok(!/human-authored/.test(line({})), 'unknown must not claim the captions are clean');
 });
+
+test('the quotes reduce step forbids quoting anything but the notes', () => {
+  // The map pass paraphrases, so on a long video the reduce turn holds no
+  // transcript at all. Without this the model re-quotes its own paraphrase in
+  // quotation marks, attributed to a named real person, with a timestamp.
+  // The old guard was a .replace() on a substring that appears in none of the
+  // five mode instructions, so it fired zero times — and the reduce test used
+  // 'brief', which is why it rotted unnoticed.
+  const out = buildReducePrompt({
+    meta: { title: 'T', duration: 9000 },
+    partials: ['> [0:00] "a real line"'],
+    mode: 'quotes',
+  });
+  assert.match(out, /only actual words of the speaker/i);
+  assert.match(out, /never place anything else inside quotation marks/i);
+});

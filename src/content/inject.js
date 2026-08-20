@@ -150,7 +150,10 @@
   //         "字幕 (c)"), which every watch page has, in zh AND ja.
   // A missed strategy falls through to innertube; a wrong click cannot be undone.
   const TRANSCRIPT_WORD =
-    /transcript|transkript|transcrip|文字起こし|文字[記记][錄录]|[轉转][錄录]稿|스크립트|транскрип|текст\s+видео|chép\s+lời|प्रतिलेख|ट्रांसक्रिप्ट|إظهار\s+النص/i;
+    // Matched against every button label on the page in order to click one, so
+    // it must never match an unrelated control. Ten locales were missing and
+    // still paid the panel timeout before falling through.
+    /transcri|transkri|transkry|trascri|přepis|átirat|μεταγραφ|ถอดเสียง|текст\s+від|транскрип|текст\s+видео|文字起こし|文字[記记][錄录]|[轉转][錄录]稿|스크립트|chép\s+lời|प्रतिलेख|ट्रांसक्रिप्ट|إظهار\s+النص/i;
 
   /** "1:23" / "12:34:56" / "-0:05" → seconds.
    *  Deliberate twin of parseTimestamp in src/lib/transcript.js — do NOT "unify"
@@ -621,6 +624,12 @@
         });
         if (res.ok) {
           const raw = await res.text();
+          if (!raw.trim()) {
+            // 200 with nothing in it is the endpoint telling us the token is no
+            // good. Cached, it would be replayed on every retry until the page
+            // was reloaded, so every Try again would fail the same way.
+            potParams = null;
+          }
           if (raw.trim()) {
             const parsed = JSON.parse(raw);
             if (parsed && Array.isArray(parsed.events) && parsed.events.length) json3 = parsed;
@@ -633,16 +642,6 @@
 
     if (json3) return { json3, trackInfo, strategy: 'captions' };
 
-    // No caption text, and no token to ask again with. YouTube only issues one
-    // while the video is playing, so on a paused player this is not a slow
-    // path — it is a dead one. Fail in a second with something the viewer can
-    // act on instead of grinding through fallbacks for another half minute.
-    if (!potParams && isPaused()) {
-      throw errored(
-        'NEEDS_PLAY',
-        'YouTube only releases caption text while the video is playing. Press play, give it a second, then hit Summarize again.'
-      );
-    }
 
     // Same rule as handleTranscript: the fallbacks scrape ungated page state, so
     // they may only run while the player still confirms this video. A navigation
@@ -653,6 +652,18 @@
 
     const fallback = await fallbackCues(Number(msg.duration) || 0);
     if (fallback) return { cues: fallback.cues, trackInfo, strategy: fallback.strategy };
+
+    // Only now. Neither fallback reads playback state — handleTranscript runs
+    // the same two on a paused video that has no caption tracks at all — so
+    // failing before them meant a paused video WITH captions did worse than one
+    // without. Once they have both missed, a missing token is the best
+    // explanation left and pressing play is the one thing the viewer can do.
+    if (!potParams && isPaused()) {
+      throw errored(
+        'NEEDS_PLAY',
+        'YouTube only releases caption text while the video is playing. Press play, give it a second, then hit Summarize again.'
+      );
+    }
 
     // Tracks exist but nothing would serve their text. That is session/profile
     // related, not a property of the video, and the fix is different.

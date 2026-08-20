@@ -15,6 +15,9 @@ the commit that closed them, so the reasoning survives.
       the second video.
 - [ ] Ten-video hit-rate test on a normal browser profile. This number decides
       whether the extension is launchable.
+- [ ] Measure whether a `pot` is video- or session-scoped: capture one on video
+      A, fetch B's `baseUrl&c=WEB&pot=<A>` from the console, record the bytes in
+      FACTS.md. Decides whether the cache is ever keyed by video id.
 
 ## Next
 

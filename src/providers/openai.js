@@ -78,3 +78,8 @@ export function extractDelta(event) {
 export function parseError(status, bodyText) {
   return statusError(status, errorDetail(bodyText), PROVIDER);
 }
+
+/** True when the provider says it stopped because it ran out of room, not because it finished. */
+export function isTruncated(event) {
+  return Boolean(event?.choices?.[0]?.finish_reason === 'length');
+}

@@ -19,7 +19,12 @@ const charsOf = (cues) => cues.reduce((n, c) => n + String(c.text || '').length 
  */
 export function chunkCues(cues, opts = {}) {
   const maxChars = Number(opts.maxChars) > 0 ? Number(opts.maxChars) : 60000;
-  const windowSeconds = Number(opts.windowSeconds) > 0 ? Number(opts.windowSeconds) : 480;
+  // 1800, not 480. Measured on a cue every 2.5s at 35 chars: a 3-hour video is
+  // 24 chunks at 480 and 7 at 1800, and the largest 1800 chunk is 25,200 chars
+  // against a 60,000 maxChars the window never let it approach. Those chunks are
+  // sequential generative calls with nothing painted until the reduce pass, so
+  // the window was costing three quarters of the wait for nothing.
+  const windowSeconds = Number(opts.windowSeconds) > 0 ? Number(opts.windowSeconds) : 1800;
   const overlapSeconds = Number(opts.overlapSeconds) >= 0 ? Number(opts.overlapSeconds) : 30;
 
   const list = Array.isArray(cues) ? cues.filter((c) => c && typeof c.text === 'string') : [];

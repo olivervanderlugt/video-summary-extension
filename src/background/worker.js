@@ -106,7 +106,7 @@ function toUserError(err) {
  * One streaming completion. Yields text deltas.
  * The adapter owns every provider-specific detail; this function owns none.
  */
-async function* streamCompletion({ settings, adapter, system, messages, signal }) {
+async function* streamCompletion({ settings, adapter, system, messages, signal, onTruncated = () => {} }) {
   const key = activeKey(settings);
   if (!key) {
     throw new AppError(
@@ -125,7 +125,28 @@ async function* streamCompletion({ settings, adapter, system, messages, signal }
     maxTokens: Number(settings.maxTokens) || DEFAULTS.maxTokens,
   });
 
-  const response = await fetch(url, { method: 'POST', headers, body, signal });
+  // Bound the response HEADERS only. Wrapping the whole request in a timeout
+  // would abort the body mid-stream and kill a legitimately long reduce pass.
+  const headersTimer = new AbortController();
+  const headersDeadline = setTimeout(() => headersTimer.abort(), 60_000);
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body,
+      signal: AbortSignal.any ? AbortSignal.any([signal, headersTimer.signal]) : signal,
+    });
+  } catch (err) {
+    // A timeout abort reported as CANCELLED would paint a silent empty done,
+    // which is worse than the hang it replaces.
+    if (headersTimer.signal.aborted) {
+      throw new AppError('NETWORK', 'The provider did not respond within a minute. Try again, or check the base URL if you set one.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(headersDeadline);
+  }
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
@@ -137,13 +158,20 @@ async function* streamCompletion({ settings, adapter, system, messages, signal }
   }
 
   let got = false;
+  let truncated = false;
   for await (const event of sseEvents(response.body)) {
+    if (adapter.isTruncated && adapter.isTruncated(event)) truncated = true;
     const delta = adapter.extractDelta(event);
     if (delta) {
       got = true;
       yield delta;
     }
   }
+  // A response cut off at max_tokens ends its stream normally, so without this
+  // the half answer is painted, marked done, and cached as complete — the exact
+  // failure this file's coverage guard exists to prevent.
+  if (truncated) onTruncated();
+
   if (!got) {
     throw new AppError(
       'EMPTY',
@@ -196,9 +224,12 @@ class Session {
    * anyone who wants to check it rather than something that should push the
    * answer off the screen.
    */
-  html() {
+  html(final = false) {
     const rendered = linkifyTimestamps(renderMarkdown(this.buffer));
-    return this.mode === 'detailed' ? foldSection(rendered, 'Key points') : rendered;
+    // Only on the last render. Folding mid-stream makes the panel appear to
+    // stall the moment `## Key points` arrives, and re-collapses a fold the
+    // reader just opened on the next throttled paint 80ms later.
+    return final && this.mode === 'detailed' ? foldSection(rendered, 'Key points') : rendered;
   }
 
   post(msg) {
@@ -384,12 +415,12 @@ class Session {
       this.post({
         type: 'done',
         text: this.buffer,
-        html: this.html(),
+        html: this.html(true),
       });
     } catch (err) {
       const { code, message } = toUserError(err);
       if (code !== 'CANCELLED') this.post({ type: 'error', code, message });
-      else this.post({ type: 'done', text: this.buffer, html: this.html(), cancelled: true });
+      else this.post({ type: 'done', text: this.buffer, html: this.html(true), cancelled: true });
     } finally {
       this.controller = null;
       this.stopKeepalive();
@@ -397,12 +428,21 @@ class Session {
   }
 
   async streamInto({ settings, adapter, system, messages, signal, onRetry }) {
+    // A response cut off at max_tokens ends its stream normally, so nothing
+    // downstream can tell a finished summary from a severed one.
+    const onTruncated = () =>
+      this.post({
+        type: 'warning',
+        code: 'TRUNCATED',
+        message:
+          'The answer hit the length limit and stops mid-thought. Raise "Maximum answer length" in settings, or choose a shorter summary style.',
+      });
     const start = this.buffer.length;
     await withRetry(async () => {
       // A retry starts the answer over; the half that broke must not stay in
       // the buffer, or the panel shows it twice.
       this.buffer = this.buffer.slice(0, start);
-      for await (const delta of streamCompletion({ settings, adapter, system, messages, signal })) {
+      for await (const delta of streamCompletion({ settings, adapter, system, messages, signal, onTruncated })) {
         this.buffer += delta;
         this.pushRender();
       }
@@ -492,7 +532,7 @@ class Session {
       this.post({
         type: 'done',
         text: this.buffer,
-        html: this.html(),
+        html: this.html(true),
         answer: this.buffer,
       });
     } catch (err) {

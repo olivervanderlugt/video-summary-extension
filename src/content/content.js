@@ -61,6 +61,13 @@
     },
     NO_PLAYER: { title: "Couldn't read the video data", body: 'Reload the page and try again.' },
     PAGE_TIMEOUT: { title: 'The page stopped responding', body: 'Reload the page and try again.' },
+    // Provider adapters emit lowercase codes; a refusal is not a fault to fix.
+    unknown: { title: 'Something went wrong', body: 'Try again.' },
+    blocked: {
+      title: 'The provider declined this video',
+      calm: true,
+      body: 'Its safety filter refused the transcript. A different provider or model usually works.',
+    },
     NEEDS_PLAY: {
       title: 'Press play first',
       calm: true,
@@ -559,12 +566,19 @@
   }
 
   function renderError(code, message) {
-    const info = ERRORS[code] || ERRORS.UNKNOWN;
+    const info = ERRORS[code] || ERRORS.unknown || ERRORS.UNKNOWN;
     // A run that ended badly leaves no session in the worker worth reusing. Drop
     // the "already begun" claim so Try again posts a fresh `begin` instead of
     // waiting forever for a `fetchTrack` nobody is going to send.
     state.begunFor = null;
-    clearOutput();
+    // The cached transcript is the thing that came back empty; keeping it would
+    // make Try again resend it and fail in exactly the same way.
+    if (code === 'TRACK_EMPTY' || code === 'NO_TRANSCRIPT') state.transcript = null;
+
+    // Keep whatever already streamed. The reader saw it and paid for it, and
+    // the cancel path already preserves it — the error path did the opposite.
+    if (state.html || state.text) paint();
+    else clearOutput();
     hideStatus();
     const box = node('div', `vse-error${info.calm ? ' vse-error-calm' : ''}`);
     box.setAttribute('role', 'note');

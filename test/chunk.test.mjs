@@ -23,9 +23,11 @@ test('a short video is one chunk, unchanged', () => {
 });
 
 test('every cue survives chunking', () => {
-  const cues = makeCues(600); // 30 minutes at 3s a cue
+  // 2 hours: long enough to split now that the window is 30 minutes. A
+  // 30-minute video is deliberately a single chunk — see the next test.
+  const cues = makeCues(2400); // 2 hours at 3s a cue
   const chunks = chunkCues(cues);
-  assert.ok(chunks.length > 1);
+  assert.ok(chunks.length > 1, 'two hours should still split');
   const seen = new Set(chunks.flatMap((c) => c.cues));
   for (const cue of cues) assert.ok(seen.has(cue), `cue at ${cue.t} was dropped`);
 });
@@ -76,4 +78,23 @@ test('a single cue larger than maxChars still comes back', () => {
   const chunks = chunkCues(cues, { maxChars: 100 });
   assert.equal(chunks.length, 1);
   assert.equal(chunks[0].cues.length, 1);
+});
+
+test('an ordinary video is one chunk, not sixteen', () => {
+  // Each chunk is a sequential generative call with nothing painted until the
+  // reduce pass, so splitting a video that fits is pure waiting. Measured on a
+  // cue every 2.5s: a 3-hour video went from 24 chunks to 7 when the window
+  // moved from 8 to 30 minutes, largest chunk 25,200 chars against a 60,000 cap.
+  const halfHour = [];
+  for (let i = 0; i * 2.5 < 1800; i++) halfHour.push({ t: i * 2.5, d: 2.5, text: 'x'.repeat(35) });
+  assert.equal(chunkCues(halfHour).length, 1, 'half an hour must not be split');
+
+  const threeHours = [];
+  for (let i = 0; i * 2.5 < 10800; i++) threeHours.push({ t: i * 2.5, d: 2.5, text: 'x'.repeat(35) });
+  const chunks = chunkCues(threeHours);
+  assert.ok(chunks.length <= 8, `three hours split into ${chunks.length} calls`);
+
+  const covered = new Set();
+  for (const c of chunks) for (const cue of c.cues) covered.add(cue.t);
+  assert.equal(covered.size, threeHours.length, 'a cue was lost at a boundary');
 });

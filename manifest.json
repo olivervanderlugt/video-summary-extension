@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Video Summary",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "AI summaries of YouTube videos with clickable timestamps, using your own API key.",
   "permissions": ["storage", "identity"],
   "externally_connectable": { "ids": [], "matches": [] },

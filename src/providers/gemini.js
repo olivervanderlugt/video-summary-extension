@@ -81,3 +81,8 @@ export function parseError(status, bodyText) {
   }
   return statusError(status, detail, PROVIDER);
 }
+
+/** True when the provider says it stopped because it ran out of room, not because it finished. */
+export function isTruncated(event) {
+  return Boolean(event?.candidates?.[0]?.finishReason === 'MAX_TOKENS');
+}

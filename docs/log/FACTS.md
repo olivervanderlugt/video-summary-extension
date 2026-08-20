@@ -44,6 +44,28 @@ navigation.
 **`video.duration` is NaN until metadata loads**, and during a pre-roll ad it is
 the ad's duration, not the video's.
 
+## Measured on the core path (2026-08-20)
+
+Cue every 2.5s at 35 chars, so a 3-hour video is 4,320 cues:
+
+| | window 480s | window 1800s |
+|---|---|---|
+| chunks (sequential calls) | 24 | **7** |
+| largest chunk | 6,720 chars | 25,200 chars |
+
+`maxChars` is 60,000, so the window fires first every time — 480 was doing all
+the work and nothing in the file justified it.
+
+Marker interval, same transcript: **30s costs 158,859 chars, 15s costs 162,199 —
++2.1%.** The source comment claimed per-cue markers "triple the token count";
+measurement puts that out by roughly 14x. At 30s a citation landed a median 15s
+and up to 27.5s before the moment it cited.
+
+Pure work is free and not worth optimising: on a 3-hour transcript parseJson3
+2.6ms, cuesToText 1.6ms, chunkCues 0.1ms, prompt build 0.1ms, markdown render
+0.2-0.4ms behind an 80ms throttle. Every second on this path is spent waiting on
+YouTube or a provider.
+
 ## Environment
 
 **The claude-in-chrome profile is degraded for YouTube.** Its own transcript

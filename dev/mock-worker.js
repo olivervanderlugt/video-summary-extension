@@ -10,9 +10,11 @@ import { buildSystemPrompt, buildSummaryPrompt, buildQuestionPrompt } from '/src
 import { renderMarkdown, linkifyTimestamps, foldSection } from '/src/lib/markdown.js';
 
 // Mirrors worker.js html(): detailed folds Key points.
-const paint = (md, mode) => {
+// Mirrors worker.js html(final): folding mid-stream makes the panel look
+// stalled and re-collapses a fold the reader just opened.
+const paint = (md, mode, final = false) => {
   const html = linkifyTimestamps(renderMarkdown(md));
-  return mode === 'detailed' ? foldSection(html, 'Key points') : html;
+  return final && mode === 'detailed' ? foldSection(html, 'Key points') : html;
 };
 
 const SUMMARY = `## TL;DR
@@ -130,7 +132,7 @@ function makePort(onToPage) {
       post({ type: 'status', stage: 'summarizing' });
       const text = await stream(SUMMARY, msg.mode);
       if (text === null) return; // cancelled
-      post({ type: 'done', text, html: paint(text, msg.mode) });
+      post({ type: 'done', text, html: paint(text, msg.mode, true) });
       return;
     }
 
