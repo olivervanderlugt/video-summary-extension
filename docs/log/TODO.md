@@ -5,11 +5,11 @@ the commit that closed them, so the reasoning survives.
 
 ## Now
 
-- [ ] **The transcript still fails on real videos.** The pot capture works in
-      isolation but has not been confirmed end to end on a healthy profile. Prime
-      suspect: if the viewer already has captions on, the player fetched the
-      track before our patch installed and will not fetch again when we set the
-      same track, so no token is ever seen. See FACTS.md.
+- [ ] **The transcript still fails on real videos, and we do not know why.**
+      Token capture worked exactly once, in a console session, and has not
+      reproduced. **Read `HANDOFF.md` first** — it lists five candidate causes
+      and one diagnostic that distinguishes them. Do not change `ensurePot`
+      before running `dev/diagnose.js` on a failing video.
 - [ ] Confirm whether a `pot` is video-scoped or session-scoped. The code caches
       one per page lifetime; if tokens are video-scoped that cache is wrong on
       the second video.
