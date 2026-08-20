@@ -73,7 +73,10 @@ const el = {
   refreshModels: $('refreshModels'),
   modelMsg: $('modelMsg'),
   lang: $('lang'),
-  signInBlock: $('signInBlock'),
+  signInView: $('signInView'),
+  keyView: $('keyView'),
+  toKeyView: $('toKeyView'),
+  toSignInView: $('toSignInView'),
   signInBtn: $('signInBtn'),
   signInResult: $('signInResult'),
   defaultMode: $('defaultMode'),
@@ -85,11 +88,7 @@ const el = {
   wipeCancel: $('wipeCancel'),
   wipeMsg: $('wipeMsg'),
   saved: $('saved'),
-  stepProvider: $('stepProvider'),
-  stepKey: $('stepKey'),
-  stepModel: $('stepModel'),
-  providerState: $('providerState'),
-  keyState: $('keyState'),
+  connState: $('connState'),
   tour: $('tour'),
   tourStep: $('tourStep'),
   tourTotal: $('tourTotal'),
@@ -194,9 +193,15 @@ function saveSoon() {
 
 /* ---------- rendering ---------- */
 
+/** Only the providers you bring your own key to. OpenRouter is the sign-in
+    view's whole job, so listing it here as a fifth equal would undo that. */
+function keyProviders() {
+  return Object.entries(PROVIDERS).filter(([, p]) => !p.supportsSignIn);
+}
+
 function renderProviders() {
   el.providerList.replaceChildren();
-  for (const [id, p] of Object.entries(PROVIDERS)) {
+  for (const [id, p] of keyProviders()) {
     const label = document.createElement('label');
     label.className = 'provider';
     label.htmlFor = 'provider-' + id;
@@ -219,42 +224,23 @@ function renderProviders() {
     name.className = 'provider-name';
     name.textContent = p.label || id;
 
-    const note = document.createElement('span');
-    note.className = 'provider-note';
-    // Signing in has no key to have saved yet, and "no key yet" reads as a
-    // chore. Say what the user actually has to do instead.
-    note.textContent = settings.keys[id]
-      ? p.supportsSignIn
-        ? 'signed in'
-        : 'key saved'
-      : p.supportsSignIn
-        ? 'sign in — no key needed'
-        : 'needs an API key';
-
-    if (p.supportsSignIn) {
-      label.classList.add('provider-recommended');
-      const flag = document.createElement('span');
-      flag.className = 'provider-flag';
-      flag.textContent = 'Easiest';
-      label.append(radio, name, flag, note);
-      el.providerList.append(label);
-      continue;
-    }
-
-    label.append(radio, name, note);
+    label.append(radio, name);
     el.providerList.append(label);
   }
 }
 
-/** Only OpenRouter can do this today, so the block is driven by the adapter. */
-function renderSignIn() {
-  const p = adapter();
-  el.signInBlock.hidden = !p.supportsSignIn;
-  if (p.supportsSignIn) el.signInBtn.textContent = `Sign in with ${p.label.split(' (')[0]}`;
+/**
+ * Two entrances, one panel. Sign-in is the default; the key path is disclosed
+ * on request, and is what someone with a stored non-OpenRouter provider lands
+ * on. The view is derived from the setting, never remembered separately.
+ */
+function showKeyView(on) {
+  el.keyView.hidden = !on;
+  el.signInView.hidden = !!on;
+  updateState(false);
 }
 
 function renderProviderFields() {
-  renderSignIn();
   const p = adapter();
   el.keyProviderName.textContent = p.label || settings.provider;
   el.key.value = settings.keys[settings.provider] || '';
@@ -277,46 +263,23 @@ function renderProviderFields() {
     el.grantBtn.hidden = true;
   }
 
-  // Mark which providers already hold a key.
-  for (const [id, node] of Object.entries(providerNotes())) {
-    node.textContent = settings.keys[id] ? 'key saved' : 'no key yet';
-  }
+  const radio = el.providerList.querySelector(`input[value="${CSS.escape(settings.provider)}"]`);
+  if (radio) radio.checked = true;
+
   say(el.testResult, '');
-  updateSteps(false);
+  updateState(false);
 }
 
-/** Short name for the pill — the parenthetical in the label is noise there. */
-function shortLabel(p, id) {
-  return (p.label || id).split(' (')[0];
-}
-
-/**
- * The numbered rail is the page's map of "what still needs doing", so it has to
- * follow the real state rather than be decoration.
- */
-function updateSteps(testPassed) {
-  const p = adapter();
-  // A provider is always selected, so step one is only ever informational.
-  el.stepProvider.classList.add('done');
-  el.providerState.textContent = shortLabel(p, settings.provider);
-  el.providerState.className = 'state good';
-
+/** One status, in one place: the badge on the panel heading. */
+function updateState(testPassed) {
+  const onSignIn = !el.signInView.hidden;
   const hasKey = !!(settings.keys[settings.provider] || '').trim();
-  el.stepKey.classList.toggle('done', hasKey);
-  el.keyState.textContent = testPassed ? 'tested, works' : (hasKey ? 'key saved' : 'no key yet');
-  el.keyState.className = 'state' + (hasKey ? ' good' : '');
-
-  // Only a step you can actually have reached: a model is meaningless without a key.
-  el.stepModel.classList.toggle('done', hasKey && !!(settings.model || p.defaultModel));
-}
-
-function providerNotes() {
-  const out = {};
-  for (const label of el.providerList.querySelectorAll('.provider')) {
-    const id = label.querySelector('input').value;
-    out[id] = label.querySelector('.provider-note');
-  }
-  return out;
+  el.connState.textContent = testPassed
+    ? 'tested, works'
+    : hasKey
+      ? (onSignIn ? 'signed in' : 'key saved')
+      : (onSignIn ? 'not connected' : 'no key yet');
+  el.connState.className = 'state' + (hasKey ? ' good' : '');
 }
 
 function renderModelOptions(models, selected) {
@@ -343,6 +306,16 @@ function renderModelOptions(models, selected) {
 async function refreshModels({ silent } = {}) {
   const p = adapter();
   const selected = settings.model || p.defaultModel || '';
+
+  // Nothing to ask the provider with yet. Show the built-in list quietly rather
+  // than warning someone about a fetch they never asked for.
+  if (!(settings.keys[settings.provider] || '').trim()) {
+    renderModelOptions(p.fallbackModels || [], selected);
+    syncModelInputs(selected);
+    say(el.modelMsg, '');
+    return;
+  }
+
   if (!silent) say(el.modelMsg, 'Loading models…', 'busy');
 
   // The worker reads settings from storage, never from the message, so what is
@@ -366,7 +339,6 @@ async function refreshModels({ silent } = {}) {
     );
   }
   syncModelInputs(selected);
-  updateSteps();
 }
 
 function syncModelInputs(selected) {
@@ -433,9 +405,7 @@ async function requestOrigin(origin) {
 function wire() {
   el.key.addEventListener('input', () => {
     settings.keys[settings.provider] = el.key.value.trim();
-    const notes = providerNotes();
-    if (notes[settings.provider]) notes[settings.provider].textContent = settings.keys[settings.provider] ? 'key saved' : 'no key yet';
-    updateSteps(false);
+    updateState(false);
     saveSoon();
   });
 
@@ -444,6 +414,30 @@ function wire() {
     el.key.type = show ? 'text' : 'password';
     el.toggleKey.textContent = show ? 'Hide' : 'Show';
     el.toggleKey.setAttribute('aria-pressed', String(show));
+  });
+
+  // Taking the key path is a real choice: it needs a provider that wants a key.
+  el.toKeyView.addEventListener('click', () => {
+    if (adapter().supportsSignIn) {
+      const withKey = keyProviders().find(([id]) => (settings.keys[id] || '').trim());
+      settings.provider = (withKey || keyProviders()[0])[0];
+      renderProviderFields();
+      save();
+      refreshModels({ silent: true });
+    }
+    showKeyView(true);
+    el.key.focus();
+  });
+
+  el.toSignInView.addEventListener('click', () => {
+    if (!adapter().supportsSignIn) {
+      settings.provider = 'openrouter';
+      renderProviderFields();
+      save();
+      refreshModels({ silent: true });
+    }
+    showKeyView(false);
+    el.signInBtn.focus();
   });
 
   el.signInBtn.addEventListener('click', async () => {
@@ -472,7 +466,7 @@ function wire() {
     if (res && res.ok) {
       const n = Array.isArray(res.models) ? res.models.length : null;
       say(el.testResult, res.message || res.note || (n !== null ? `Key works — ${n} models available.` : 'Key works.'), 'ok');
-      updateSteps(true);
+      updateState(true);
     } else {
       say(el.testResult, (res && res.message) || 'The test failed and the worker gave no reason.', 'err');
     }
@@ -497,7 +491,6 @@ function wire() {
   el.model.addEventListener('change', () => {
     settings.model = el.model.value;
     el.modelCustom.value = '';
-    updateSteps();
     saveSoon();
   });
 
@@ -556,6 +549,8 @@ function wire() {
     fill();
     renderProviders();
     renderProviderFields();
+    showKeyView(false);   // back to a fresh install: sign-in is the whole page
+    refreshModels({ silent: true });
     say(el.wipeMsg, 'Everything stored by this extension has been deleted.', 'ok');
     endTour();
   });
@@ -613,10 +608,58 @@ async function init() {
   await fillModes();
   fill();
   renderProviderFields();
+  // Someone who already configured a key provider lands on their own setup;
+  // everyone else gets the sign-in.
+  showKeyView(!adapter().supportsSignIn);
   wire();
+  wireTips();
   wireTour();
   maybeStartTour();
   refreshModels({ silent: true });
+}
+
+/* ---------- explanations behind the "i" ---------- */
+
+/*
+ * Where there is a pointer, hover and keyboard focus reveal the text and CSS
+ * does all of it — a click toggle there would only fight the hover. Where
+ * there is no hover, tapping is the only way in, so that is the one case that
+ * gets a handler. Either way the text is tied to its control with
+ * aria-describedby, so a screen reader never has to find the icon.
+ */
+function wireTips() {
+  const tips = Array.from(document.querySelectorAll('.info'), (btn) => ({
+    btn,
+    tip: $(btn.getAttribute('aria-controls')),
+  })).filter((t) => t.tip);
+
+  const closeAll = () => {
+    for (const { btn, tip } of tips) {
+      tip.classList.remove('open');
+      if (btn.hasAttribute('aria-expanded')) btn.setAttribute('aria-expanded', 'false');
+    }
+  };
+
+  if (window.matchMedia('(hover: none)').matches) {
+    for (const { btn, tip } of tips) {
+      btn.setAttribute('aria-expanded', 'false');
+      btn.addEventListener('click', () => {
+        const open = !tip.classList.contains('open');
+        closeAll();
+        tip.classList.toggle('open', open);
+        btn.setAttribute('aria-expanded', String(open));
+      });
+    }
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    closeAll();
+    // A hover-revealed tip is held open by focus; letting go of it closes it.
+    if (document.activeElement && document.activeElement.classList.contains('info')) {
+      document.activeElement.blur();
+    }
+  });
 }
 
 /* ---------- first-visit walkthrough ---------- */
@@ -626,17 +669,17 @@ async function init() {
    them entirely can still use every control underneath. */
 const TOUR_STEPS = [
   {
-    target: 'stepProvider',
-    title: 'Start by picking a provider',
-    body: 'Five to choose from. OpenRouter is the shortest route — it lets you sign in instead of pasting a key, and mints one for this extension itself.',
+    target: 'connectPanel',
+    title: 'Start by signing in',
+    body: 'One press and OpenRouter gives this extension a key of its own \u2014 good for Claude, GPT and Gemini. Brought a key from somewhere else? The link underneath opens that path.',
   },
   {
-    target: 'stepKey',
-    title: 'Add your key, then press Test',
-    body: 'Paste the key, or press "Sign in with OpenRouter" if you chose that. Then press "Test this key" — it tells you in plain words whether it worked.',
+    target: 'modelSection',
+    title: 'Then pick a model',
+    body: 'The list is fetched from whichever provider you connected. Anything on it works; the default is a sensible one.',
   },
   {
-    target: 'prefsCard',
+    target: 'prefsSection',
     title: 'The rest is optional',
     body: 'Language, summary style, length and the rest all have working defaults. Change any of it now or later; nothing here is permanent.',
   },
