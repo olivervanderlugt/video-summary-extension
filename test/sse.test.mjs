@@ -19,8 +19,10 @@ test('parses events, joins multi-line data, skips comments and malformed payload
 
 test('[DONE] stops iteration and is never yielded', async () => {
   const events = await collect(fixture('sse-generic.txt'));
-  assert.ok(!events.some((e) => e.never)); // fixture has an event after [DONE]
-  assert.ok(!events.includes('[DONE]'));
+  assert.ok(!events.some((e) => e && e.never)); // fixture has an event after [DONE]
+  // The sentinel itself must not surface as a value either: a consumer that
+  // gets '[DONE]' handed to it as an event treats it as a delta and prints it.
+  assert.equal(events.length, 3, `yielded ${JSON.stringify(events)}`);
 });
 
 test('one byte at a time yields exactly the same events as one whole chunk', async () => {
