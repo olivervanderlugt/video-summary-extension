@@ -435,16 +435,27 @@ chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'vse') return;
   const session = new Session(port);
 
+  // Every handler is async and none of them is awaited, so a rejection would
+  // otherwise be an unhandled promise and the panel would sit on its spinner
+  // forever with nothing to click. Fail loudly into the panel instead.
+  const dispatch = (fn, msg) =>
+    Promise.resolve()
+      .then(() => fn.call(session, msg))
+      .catch((err) => {
+        const { code, message } = toUserError(err);
+        if (code !== 'CANCELLED') session.post({ type: 'error', code, message });
+      });
+
   port.onMessage.addListener((msg) => {
     switch (msg?.type) {
       case 'begin':
-        session.begin(msg);
+        dispatch(session.begin, msg);
         break;
       case 'run':
-        session.run(msg);
+        dispatch(session.run, msg);
         break;
       case 'ask':
-        session.ask(msg);
+        dispatch(session.ask, msg);
         break;
       case 'cancel':
         session.cancel();
@@ -490,25 +501,36 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // a host of its choosing and have the worker attach the user's real key.
   if (sender.id !== chrome.runtime.id) return false;
 
+  // Every path below MUST answer. A throw here — a custom base URL returning
+  // HTML instead of JSON, a stale provider id — would otherwise leave the
+  // options page's Test button spinning forever with no way to find out why.
+  const answer = (payload) => {
+    try {
+      sendResponse(payload);
+    } catch {
+      // Requester navigated away mid-call. Nothing to deliver to.
+    }
+  };
+
   (async () => {
     switch (msg?.type) {
       case 'getSettings': {
         // The content script runs on youtube.com and needs none of the secrets.
         // Hand it the two fields it actually uses and nothing else.
         const s = await loadSettings();
-        sendResponse({ autoRun: s.autoRun, defaultMode: s.defaultMode, lang: s.lang });
+        answer({ autoRun: s.autoRun, defaultMode: s.defaultMode, lang: s.lang });
         return;
       }
       case 'listModels': {
         // Settings come from storage, never from the message: a caller-supplied
         // baseUrl would redirect a request that carries the stored key.
-        sendResponse(await listModels(await loadSettings()));
+        answer(await listModels(await loadSettings()));
         return;
       }
       case 'testKey': {
         const settings = await loadSettings();
         const result = await listModels(settings);
-        sendResponse(
+        answer(
           result.ok
             ? { ok: true, message: `Key works — ${result.models.length} models available.`, models: result.models }
             : result
@@ -517,10 +539,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
       case 'openOptions':
         chrome.runtime.openOptionsPage();
-        sendResponse({ ok: true });
+        answer({ ok: true });
         return;
       case 'providers':
-        sendResponse(
+        answer(
           Object.values(PROVIDERS).map((p) => ({
             id: p.id,
             label: p.label,
@@ -533,9 +555,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         );
         return;
       default:
-        sendResponse({ ok: false, code: 'UNKNOWN_MESSAGE', message: 'Unknown message type.' });
+        answer({ ok: false, code: 'UNKNOWN_MESSAGE', message: 'Unknown message type.' });
     }
-  })();
+  })().catch((err) => {
+    answer({
+      ok: false,
+      code: 'UNKNOWN',
+      message: `The extension hit an unexpected error: ${err?.message || err}`,
+    });
+  });
   return true; // keep the channel open for the async response
 });
 
