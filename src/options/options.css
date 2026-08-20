@@ -667,3 +667,30 @@ a { color: var(--accent-hi); text-underline-offset: 2px; }
   white-space: nowrap;
   border: 0;
 }
+
+/* The provider you can just sign in to. Marked, because "which of these five"
+   is the first place a new user stalls. */
+.provider-recommended { border-color: var(--accent); }
+.provider-flag {
+  grid-column: 2;
+  justify-self: start;
+  margin-bottom: 2px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink, #fff);
+  font: 600 10px/1.6 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Plain-language answer first; the precise wording stays one click deeper. */
+.security-lead { font-size: 14px; }
+.security-more { margin-top: 14px; }
+.security-more > summary {
+  cursor: pointer;
+  font: 500 13px/1.6 var(--sans);
+  color: var(--fg-dim);
+}
+.security-more > summary:hover { color: var(--fg); }
+.security-more > div > p { font-size: 13px; color: var(--fg-dim); }

@@ -1,7 +1,7 @@
 import { PROVIDERS } from '../providers/index.js';
 
 const DEFAULTS = {
-  provider: 'anthropic',
+  provider: 'openrouter', // sign-in beats hunting for an API key
   keys: { anthropic: '', openai: '', gemini: '', openrouter: '', compatible: '' },
   model: '',
   baseUrl: '',
@@ -221,7 +221,25 @@ function renderProviders() {
 
     const note = document.createElement('span');
     note.className = 'provider-note';
-    note.textContent = settings.keys[id] ? 'key saved' : 'no key yet';
+    // Signing in has no key to have saved yet, and "no key yet" reads as a
+    // chore. Say what the user actually has to do instead.
+    note.textContent = settings.keys[id]
+      ? p.supportsSignIn
+        ? 'signed in'
+        : 'key saved'
+      : p.supportsSignIn
+        ? 'sign in — no key needed'
+        : 'needs an API key';
+
+    if (p.supportsSignIn) {
+      label.classList.add('provider-recommended');
+      const flag = document.createElement('span');
+      flag.className = 'provider-flag';
+      flag.textContent = 'Easiest';
+      label.append(radio, name, flag, note);
+      el.providerList.append(label);
+      continue;
+    }
 
     label.append(radio, name, note);
     el.providerList.append(label);

@@ -37,7 +37,10 @@ const REQ = {
 // --- registry ---------------------------------------------------------------
 
 test('registry exposes the five providers with a consistent interface', () => {
-  assert.deepEqual(Object.keys(PROVIDERS), ['anthropic', 'openai', 'gemini', 'openrouter', 'compatible']);
+  // Order matters: it is the order the settings page lists them, and the
+  // sign-in provider leads because most people have never made an API key.
+  assert.deepEqual(Object.keys(PROVIDERS), ['openrouter', 'anthropic', 'openai', 'gemini', 'compatible']);
+  assert.equal(Object.keys(PROVIDERS)[0], 'openrouter');
   for (const [key, p] of Object.entries(PROVIDERS)) {
     assert.equal(p.id, key, `${key}.id`);
     assert.equal(typeof p.label, 'string');

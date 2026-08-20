@@ -21,7 +21,7 @@ const compatible = {
 const openrouter = {
   ...openai,
   id: 'openrouter',
-  label: 'OpenRouter (sign in — no key to copy)',
+  label: 'OpenRouter',
   origin: 'https://openrouter.ai/*',
   requiresBaseUrl: false,
   fixedBaseUrl: 'https://openrouter.ai/api/v1',
@@ -37,7 +37,10 @@ const openrouter = {
   keyPlaceholder: 'sk-or-... (or just press Sign in)',
 };
 
-export const PROVIDERS = { anthropic, openai, gemini, openrouter, compatible };
+// Order is the order the settings page shows them, and openrouter leads on
+// purpose: it is the only one you can just sign in to. Most people have never
+// created an API key, and telling them to go find one is where they stop.
+export const PROVIDERS = { openrouter, anthropic, openai, gemini, compatible };
 
 export function getProvider(id) {
   const provider = PROVIDERS[id];

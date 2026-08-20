@@ -12,10 +12,10 @@
   <header class="head">
     <p class="eyebrow">Video Summary <span class="eyebrow-sep">/</span> settings</p>
     <h1>Summarise YouTube videos with <span class="mark">your own key</span>.</h1>
-    <p class="sub">Nothing here leaves your browser except the requests you send to the provider you pick.</p>
+    <p class="sub">Your key and your settings stay on this computer. The only thing that ever leaves is the video transcript, sent to the AI provider you pick.</p>
     <p class="reassure">
       <span class="reassure-icon" aria-hidden="true">↺</span>
-      <span>Nothing here is permanent. Every preference can be changed later, and each provider keeps its own key — switching provider does not lose the key you already entered for another.</span>
+      <span>Nothing here is final — you can change any of it later. Each provider remembers its own key, so switching between them never loses one.</span>
     </p>
   </header>
 
@@ -71,7 +71,7 @@
             </div>
             <p class="hint">
               <a id="keysLink" href="#" target="_blank" rel="noreferrer noopener">Where to get a key</a>
-              <span class="dim">keys are stored separately per provider, so switching providers does not lose them.</span>
+              <span class="dim">each provider keeps its own key.</span>
             </p>
 
             <div class="test">
@@ -141,7 +141,7 @@
         <div class="field">
           <label class="lbl" for="maxTokens">Maximum output length (tokens)</label>
           <input id="maxTokens" type="number" class="short" min="256" max="32000" step="256">
-          <p class="hint">A ceiling, not a target — the answer stops here rather than aiming for it. As a rough guide, 1000 tokens is somewhere around 700–800 words of English; that ratio comes from English on OpenAI's tokenizer and does not carry over. Most other languages spend more tokens per word, so the same cap buys noticeably fewer words — sometimes less than half. Longer answers cost more.</p>
+          <p class="hint">The longest the answer is allowed to get — not a target. 4000 is roughly 3000 words of English, and less in other languages. Longer answers cost more.</p>
         </div>
 
         <div class="field check">
@@ -149,30 +149,37 @@
             <input id="autoRun" type="checkbox">
             <label class="lbl inline" for="autoRun">Automatically summarise when I open a video</label>
           </div>
-          <p class="hint warn"><span class="warn-icon" aria-hidden="true">!</span> Off by default on purpose. With this on, every watch page you open spends your provider credit without asking — including videos you close after five seconds.</p>
+          <p class="hint warn"><span class="warn-icon" aria-hidden="true">!</span> Leave this off unless you want to pay for every video you open, including ones you close straight away.</p>
         </div>
       </section>
 
       <!-- Security -->
       <details class="card security" id="securityCard">
         <summary class="security-summary">
-          <span class="security-summary-text">Where your key lives, and what leaves your browser</span>
+          <span class="security-summary-text">Is my key safe here?</span>
           <span class="security-chevron" aria-hidden="true"></span>
         </summary>
         <div class="security-body">
-          <p>Your key is kept in <code>chrome.storage.local</code>, unencrypted. Anyone with access to your Chrome profile directory can read it — the same way they could read the passwords Chrome has saved for you. Encrypting it here would mean storing the passphrase next to the ciphertext, which protects nobody, so this extension does not pretend to.</p>
-          <p>It is never written to <code>chrome.storage.sync</code>, so it is never uploaded to your Google account or copied to your other machines.</p>
-          <p>The key is read only by the extension's background service worker, which is where every provider request is made. It is never handed to the YouTube page or the content script, so scripts running on youtube.com cannot see it.</p>
-          <p>The only outbound requests this extension makes are to the provider you configured above. There is no server of ours, no analytics, and no telemetry of any kind.</p>
-          <p>What gets sent to that provider, each time you summarise: the video's title, channel, duration, chapter titles, and the text of its captions. Once sent, that data is governed by your provider's data-retention policy, not by anything this extension does.</p>
-          <p>Worth doing: mint a key used only by this extension, and set a spend limit on it. Then a leak costs a capped amount and is fixed by revoking one key.</p>
+          <p class="security-lead">Short version: your key stays on this computer, kept the same way Chrome keeps your saved passwords. It is never uploaded to your Google account, never shown to YouTube, and never sent to us — there is no us, there is no server. The only thing that leaves is the transcript, and only to the provider you chose.</p>
+          <p class="security-lead">One tip worth following: make a key just for this extension and put a spending limit on it. Then if it ever leaks, you cancel that one key and nothing else is affected.</p>
+
+          <details class="security-more">
+            <summary>The precise version, for anyone who wants it</summary>
+            <div>
+              <p>Your key is kept in <code>chrome.storage.local</code>, unencrypted. Anyone with access to your Chrome profile directory can read it — the same way they could read the passwords Chrome has saved for you. Encrypting it here would mean storing the passphrase next to the ciphertext, which protects nobody, so this extension does not pretend to.</p>
+              <p>It is never written to <code>chrome.storage.sync</code>, so it is never uploaded to your Google account or copied to your other machines.</p>
+              <p>The key is read only by the extension's background service worker, which is where every provider request is made. It is never handed to the YouTube page or the content script, so scripts running on youtube.com cannot see it.</p>
+              <p>The only outbound requests this extension makes are to the provider you configured above. There is no server of ours, no analytics, and no telemetry of any kind.</p>
+              <p>What gets sent to that provider, each time you summarise: the video's title, channel, duration, chapter titles, and the text of its captions. Once sent, that data is governed by your provider's data-retention policy, not by anything this extension does.</p>
+            </div>
+          </details>
         </div>
       </details>
 
       <!-- Data -->
       <section class="card danger-card">
         <div class="card-head"><h3>Stored data</h3></div>
-        <p class="hint">Removes your keys and every setting from this browser. The extension stays installed.</p>
+        <p class="hint">Erases your keys and settings from this computer. The extension itself stays installed.</p>
         <div class="row tight">
           <button id="wipeBtn" type="button" class="btn danger">Delete all stored data</button>
           <button id="wipeConfirm" type="button" class="btn danger solid" hidden>Yes, delete everything</button>

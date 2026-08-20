@@ -20,7 +20,7 @@ import { renderMarkdown, linkifyTimestamps } from '../lib/markdown.js';
 import { createVerifier, challengeFor, authUrl, codeFromRedirect } from '../lib/pkce.js';
 
 const DEFAULTS = {
-  provider: 'anthropic',
+  provider: 'openrouter', // sign-in beats hunting for an API key
   keys: { anthropic: '', openai: '', gemini: '', openrouter: '', compatible: '' },
   model: '',
   baseUrl: '',

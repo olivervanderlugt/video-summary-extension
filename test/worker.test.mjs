@@ -397,3 +397,20 @@ test('the authorization URL goes to OpenRouter with the extension redirect', asy
   assert.equal(url.searchParams.get('code_challenge_method'), 'S256');
   assert.equal(auth.calls[0].interactive, true, 'a sign-in the user cannot see cannot be completed');
 });
+
+test('a fresh install defaults to the provider you can sign in to', async () => {
+  // Nobody has an API key on day one. The default has to be the one that does
+  // not require going and finding one.
+  storage = {};
+  const reply = await send({ type: 'getSettings' });
+  assert.equal(reply.hasKey, false);
+
+  const seen = [];
+  globalThis.fetch = async (url) => {
+    seen.push(String(url));
+    return { ok: true, json: async () => ({ data: [] }) };
+  };
+  // With no stored settings at all, the worker must still resolve a provider.
+  await send({ type: 'listModels' });
+  assert.equal(seen.length, 0, 'no key yet, so nothing should have been requested');
+});
