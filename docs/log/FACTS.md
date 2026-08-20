@@ -1,0 +1,53 @@
+# Measured facts
+
+Things established by running something, not by reasoning. Each one cost time to
+find. Do not re-derive them; if you contradict one, re-measure and update it
+here with the date and the command.
+
+## YouTube caption text
+
+**The caption endpoint answers 200 with an empty body unless the request carries
+both `pot` and `c=WEB`.** Measured 2026-08-20 on `watch?v=aircAruvnKk`:
+
+| request | result |
+|---|---|
+| `baseUrl&fmt=json3` | 200 / 0 bytes |
+| `+ pot` alone | 200 / 0 bytes |
+| `+ pot & c=WEB` | 200 / **46,010 bytes, 286 events** |
+| other language track, same pot | 200 / 27,626 bytes, 231 events |
+
+`pot` is a ~116-character proof-of-origin token. We cannot mint it. One token
+served every track on that video.
+
+**The player only requests a caption track while it is playing.** Measured
+2026-08-20, twice. Paused (`getPlayerState() === 2`): no request, ever, however
+long you wait. Playing: request fires, token capturable.
+
+**The player uses XMLHttpRequest for it**, not `fetch`. Verified by intercepting
+both — only the XHR hook saw it.
+
+**`POST /youtubei/v1/player` with the page's own ytcfg key is useless.** Returns
+200 with `playabilityStatus: UNPLAYABLE` and zero caption tracks. Do not build
+on it. `movie_player.getPlayerResponse()` works and stays fresh across SPA
+navigation.
+
+**`video.duration` is NaN until metadata loads**, and during a pre-roll ad it is
+the ad's duration, not the video's.
+
+## Environment
+
+**The claude-in-chrome profile is degraded for YouTube.** Its own transcript
+panel returns 400 `FAILED_PRECONDITION` and sometimes never issues the request
+at all; `log_event` returns 503. Tabs run `visibilityState: hidden`, so
+`setTimeout` clamps to ~1s and `requestAnimationFrame` freezes. Never measure
+timing there by polling — use a MutationObserver. A transcript failure observed
+on that profile is not evidence about the code.
+
+**youtube.com's CSP blocks loading a localhost script into the page**, so the
+dev harness cannot be injected into a real watch page. Test the real path by
+pasting code into the console instead.
+
+## Node
+
+`node --test test/` fails on Node 22+ (`MODULE_NOT_FOUND`) — positional args
+became glob patterns and `test/` matches the directory. Use bare `node --test`.

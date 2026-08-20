@@ -54,6 +54,23 @@ worker is driven through a `chrome` stub in `test/worker.test.mjs`.
 A test that cannot fail is worse than no test. If you add one, break the code on
 purpose first and check it goes red.
 
+## Read the log first
+
+`docs/log/` is the project's memory:
+
+- `FACTS.md` — things established by measurement, not reasoning. Each cost real
+  time to find. Do not re-derive them; if you contradict one, re-measure and
+  update it with the date and the command.
+- `DECISIONS.md` — why things are the way they are, including approaches that
+  were tried and rejected. If you are about to "fix" something, check here
+  first — it may be deliberate.
+- `TODO.md` — open work, ranked by what it costs a user.
+- `REPORTS.md` — every bug report and what it turned out to be. The pattern
+  across entries is worth more than any single one.
+
+Add to them as you go. A fix without its reasoning becomes someone else's
+mystery.
+
 ## What is hard about this codebase
 
 YouTube's caption endpoint answers 200 with an empty body unless the request
