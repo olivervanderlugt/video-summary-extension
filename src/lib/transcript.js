@@ -190,7 +190,3 @@ export function cuesToText(cues, opts = {}) {
     .join('\n');
 }
 
-/** Crude but consistent across providers; the router only needs a threshold. */
-export function estimateTokens(text) {
-  return Math.ceil(String(text == null ? '' : text).length / 4);
-}

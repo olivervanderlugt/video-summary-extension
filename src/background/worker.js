@@ -5,7 +5,7 @@
 // touches the key, the provider, or the prompt happens here, out of reach of
 // any script running on youtube.com.
 
-import { getProvider, PROVIDERS } from '../providers/index.js';
+import { getProvider } from '../providers/index.js';
 import { sseEvents } from '../lib/sse.js';
 import { parseJson3, pickTrack, cuesToText } from '../lib/transcript.js';
 import { chunkCues } from '../lib/chunk.js';
@@ -540,19 +540,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       case 'openOptions':
         chrome.runtime.openOptionsPage();
         answer({ ok: true });
-        return;
-      case 'providers':
-        answer(
-          Object.values(PROVIDERS).map((p) => ({
-            id: p.id,
-            label: p.label,
-            defaultModel: p.defaultModel,
-            fallbackModels: p.fallbackModels,
-            keysUrl: p.keysUrl,
-            keyPlaceholder: p.keyPlaceholder,
-            requiresBaseUrl: !!p.requiresBaseUrl,
-          }))
-        );
         return;
       default:
         answer({ ok: false, code: 'UNKNOWN_MESSAGE', message: 'Unknown message type.' });

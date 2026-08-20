@@ -6,7 +6,6 @@ import {
   formatTimestamp,
   parseTimestamp,
   cuesToText,
-  estimateTokens,
   stripDelimiters
 } from '../src/lib/transcript.js';
 
@@ -149,11 +148,6 @@ test('cuesToText handles empty input', () => {
   assert.equal(cuesToText(null), '');
 });
 
-test('estimateTokens is chars over four, rounded up', () => {
-  assert.equal(estimateTokens('abcde'), 2);
-  assert.equal(estimateTokens(''), 0);
-  assert.equal(estimateTokens(null), 0);
-});
 
 test('stripDelimiters cannot be defeated by a nested delimiter', () => {
   // Deleting one match splices its neighbours together, which can form a new

@@ -5,7 +5,6 @@ export const fallbackModels = ['claude-opus-5', 'claude-sonnet-5', 'claude-haiku
 export const origin = 'https://api.anthropic.com/*';
 export const keysUrl = 'https://console.anthropic.com/settings/keys';
 export const keyPlaceholder = 'sk-ant-...';
-export const docsUrl = 'https://docs.anthropic.com/en/api/messages';
 
 const DEFAULT_BASE = 'https://api.anthropic.com';
 

@@ -7,7 +7,6 @@ export const fallbackModels = ['gpt-5', 'gpt-5-mini', 'gpt-4.1', 'gpt-4o-mini'];
 export const origin = 'https://api.openai.com/*';
 export const keysUrl = 'https://platform.openai.com/api-keys';
 export const keyPlaceholder = 'sk-...';
-export const docsUrl = 'https://platform.openai.com/docs/api-reference/chat';
 
 const DEFAULT_BASE = 'https://api.openai.com/v1';
 

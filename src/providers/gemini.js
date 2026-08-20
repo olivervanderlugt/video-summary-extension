@@ -6,7 +6,6 @@ export const fallbackModels = ['gemini-2.5-flash', 'gemini-2.5-pro'];
 export const origin = 'https://generativelanguage.googleapis.com/*';
 export const keysUrl = 'https://aistudio.google.com/app/apikey';
 export const keyPlaceholder = 'AIza...';
-export const docsUrl = 'https://ai.google.dev/api/generate-content';
 
 const DEFAULT_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
