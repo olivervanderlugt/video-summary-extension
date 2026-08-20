@@ -75,3 +75,17 @@ test('the transcript pattern does not grab a neighbouring button', () => {
     assert.ok(!TRANSCRIPT_WORD.test(label), `"${label}" matched the transcript pattern`);
   }
 });
+
+test('buffering counts as playing for the token capture', () => {
+  // YT.PlayerState: 1 playing, 2 paused, 3 buffering, 5 cued, -1 unstarted.
+  // Buffering means the viewer already pressed play. Treating it as paused
+  // skipped the capture at the exact moment someone is most likely to press
+  // Summarize — right after starting the video — and then told them to press
+  // play, which they had.
+  const states = lift('PLAYING_STATES', /const PLAYING_STATES = new Set\(\[[^\]]*\]\);/);
+  assert.ok(states.has(1), 'playing');
+  assert.ok(states.has(3), 'buffering');
+  assert.ok(!states.has(2), 'paused is not playing');
+  assert.ok(!states.has(5), 'cued is not playing');
+  assert.ok(!states.has(-1), 'unstarted is not playing');
+});

@@ -513,10 +513,18 @@
    * back exactly as they were — the user should not find subtitles switched on
    * because they pressed Summarize.
    */
+  // YT.PlayerState: -1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering,
+  // 5 cued. Buffering means the viewer already pressed play and the video is
+  // loading — it will fetch its caption track as soon as it has frames, so
+  // treating it as paused was wrong and skipped the token capture on exactly
+  // the moment a user is most likely to press Summarize: just after starting.
+  const PLAYING_STATES = new Set([1, 3]);
+
   function isPaused() {
     try {
       const player = document.getElementById('movie_player');
-      return !player || !player.getPlayerState || player.getPlayerState() !== 1;
+      if (!player || !player.getPlayerState) return false;
+      return !PLAYING_STATES.has(player.getPlayerState());
     } catch {
       return false; // unreadable player: do not use this as a reason to give up
     }
@@ -527,34 +535,53 @@
     const player = document.getElementById('movie_player');
     if (!player || typeof player.getOption !== 'function') return null;
 
-    // Measured: the player only requests a caption track while it is playing.
-    // Paused, it will never issue the request no matter how long we wait, and
-    // waiting is worse than useless — it sits in front of the spinner before
-    // the fallbacks even start. We will not start playback to get a token:
-    // this is the viewer's video, not ours.
-    try {
-      if (player.getPlayerState && player.getPlayerState() !== 1) return null;
-    } catch {
-      return null;
-    }
+    // Measured: the player only requests a caption track while it is running.
+    // Genuinely paused, it never issues the request however long we wait, and
+    // that wait sits in front of the spinner before the fallbacks even start.
+    // We will not start playback ourselves to get a token: it is the viewer's
+    // video, not ours.
+    if (isPaused()) return null;
 
-    let previous;
     try {
       player.loadModule('captions');
-      previous = player.getOption('captions', 'track');
-      const list = player.getOption('captions', 'tracklist') || [];
-      if (!list.length) return null;
-      // Prime with the track we are about to ask for, so a viewer who happens
-      // to be watching sees a second of the subtitles they would have picked.
-      const wanted = list.find((t) => t.languageCode === preferredLang) || list[0];
-      player.setOption('captions', 'track', wanted);
     } catch {
       return null; // captions module unavailable; the fallbacks still apply
     }
 
-    // The request is fired off the player's own timers, so poll briefly.
-    // Short: this sits in front of the spinner, and the fallback strategies
-    // still run if no token arrives.
+    // loadModule does not finish synchronously. Reading the tracklist straight
+    // after it returns an empty array, and setting a track on a module that is
+    // not ready does nothing at all — which is how this silently failed to
+    // capture a token even on a playing video.
+    let list = [];
+    for (let i = 0; i < 12 && !list.length; i++) {
+      try {
+        list = player.getOption('captions', 'tracklist') || [];
+      } catch {
+        list = [];
+      }
+      if (!list.length) await sleep(80);
+    }
+    if (!list.length) return null;
+
+    let previous = null;
+    try {
+      previous = player.getOption('captions', 'track');
+    } catch {
+      /* nothing showing, or unreadable; restoring to {} is then correct */
+    }
+
+    const wanted = list.find((t) => t.languageCode === preferredLang) || list[0];
+    try {
+      // A viewer who already has subtitles on is the case that used to defeat
+      // this: setting the track it is already showing is not a change, so the
+      // player has no reason to fetch anything and no token ever appears.
+      // Clearing first makes the set a real change.
+      if (previous && previous.languageCode) player.setOption('captions', 'track', {});
+      player.setOption('captions', 'track', wanted);
+    } catch {
+      return null;
+    }
+
     for (let i = 0; i < 40 && !potParams; i++) await sleep(100);
 
     try {

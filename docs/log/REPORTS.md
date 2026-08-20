@@ -42,9 +42,25 @@ a single frozen label.
 **Fix:** XHR-only patch, budgets cut to 8s/4s/6s, per-phase status, fast fail on
 a paused player. 0.2.1 and 0.3.0.
 
-## 2026-08-20 — "press play" message shown even when playing
-0.3.0 · Chrome · OPEN
+## 2026-08-20 — transcript still refused on a playing video
+0.3.0 · Chrome · fix shipped, unconfirmed
 
-**Diagnosis:** unknown. All three strategies failed. Either the token was never
-captured (see TODO: captions already on) or `isPaused()` misread the state.
-**Fix:** open. Needs the diagnostic in TODO.
+**Diagnosis:** three defects in the token capture, all found by reading rather
+than by the reporter's data.
+1. `loadModule('captions')` does not complete synchronously. The code read the
+   tracklist immediately after it and got an empty array, then set a track on a
+   module that was not ready — which does nothing. The successful manual probe
+   had a 400ms wait that the shipped code never had.
+2. A viewer with subtitles already on defeated it entirely: setting the track
+   the player is already showing is not a change, so nothing is refetched and no
+   token ever appears.
+3. `isPaused()` treated every state except PLAYING as paused. State 3 is
+   BUFFERING — the viewer has pressed play and the video is loading. That is the
+   moment someone is most likely to press Summarize, and the code skipped the
+   capture and told them to press play.
+
+**Fix:** poll for the tracklist, clear the track before setting it so the set is
+a real change, and count buffering as playing. Commit "fix: capture the caption
+token in the cases that actually occur".
+**Unconfirmed:** the automation profile cannot play video, so this is verified by
+reading and by unit test, not end to end.

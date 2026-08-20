@@ -23,6 +23,16 @@ served every track on that video.
 2026-08-20, twice. Paused (`getPlayerState() === 2`): no request, ever, however
 long you wait. Playing: request fires, token capturable.
 
+**`loadModule('captions')` does not finish synchronously.** Reading the tracklist
+straight after it returns an empty array, and `setOption('captions','track', …)`
+on a module that is not ready silently does nothing. Poll for the tracklist.
+
+**Setting the track the player is already showing is not a change**, so it never
+refetches and no token appears. Clear the track first.
+
+**Player states that will fetch captions: 1 (playing) and 3 (buffering).** Not 2,
+5 or -1.
+
 **The player uses XMLHttpRequest for it**, not `fetch`. Verified by intercepting
 both — only the XHR hook saw it.
 
