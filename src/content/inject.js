@@ -441,6 +441,92 @@
    * A 200 with an empty body is a measured, real YouTube response; it falls
    * through to the panel/innertube strategies rather than failing the run.
    */
+  // ---------------------------------------------------- proof-of-origin token
+  //
+  // Measured on live YouTube: the caption endpoint answers 200 with an EMPTY
+  // BODY unless the request carries both `pot` (a ~116 character
+  // proof-of-origin token) and `c=WEB`. With neither, or with only one of the
+  // two, the response is zero bytes. With both:
+  //
+  //     no pot          -> 200 /      0 bytes
+  //     pot alone       -> 200 /      0 bytes
+  //     pot + c=WEB     -> 200 / 46,010 bytes, 286 events
+  //
+  // We cannot mint that token — it comes from YouTube's attestation machinery.
+  // The player holds a valid one, because it is the player, and it puts the
+  // token in the query string of its own caption request. So we watch for that
+  // request and borrow the token. One token works for every track on the video.
+  //
+  // This cannot be closed off without also breaking YouTube's own subtitles.
+
+  let potParams = null; // { pot, c } once seen
+
+  function rememberPot(rawUrl) {
+    try {
+      const u = new URL(rawUrl, location.origin);
+      if (!u.pathname.includes('timedtext')) return;
+      const pot = u.searchParams.get('pot');
+      const c = u.searchParams.get('c');
+      if (pot && c) potParams = { pot, c };
+    } catch {
+      /* not a URL we can read; nothing to take from it */
+    }
+  }
+
+  /**
+   * Watch every caption request the page makes. Installed at document_start so
+   * a user who already has subtitles switched on gives us a token for free,
+   * without the player ever being touched.
+   */
+  function watchForPot() {
+    const nativeOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (method, url) {
+      rememberPot(url);
+      return nativeOpen.apply(this, arguments);
+    };
+    const nativeFetch = window.fetch;
+    window.fetch = function (input) {
+      rememberPot(typeof input === 'string' ? input : input && input.url);
+      return nativeFetch.apply(this, arguments);
+    };
+  }
+
+  /**
+   * No token yet means subtitles have not been on this session. Ask the player
+   * for captions just long enough for it to fetch one, then put its settings
+   * back exactly as they were — the user should not find subtitles switched on
+   * because they pressed Summarize.
+   */
+  async function ensurePot(preferredLang) {
+    if (potParams) return potParams;
+    const player = document.getElementById('movie_player');
+    if (!player || typeof player.getOption !== 'function') return null;
+
+    let previous;
+    try {
+      player.loadModule('captions');
+      previous = player.getOption('captions', 'track');
+      const list = player.getOption('captions', 'tracklist') || [];
+      if (!list.length) return null;
+      // Prime with the track we are about to ask for, so a viewer who happens
+      // to be watching sees a second of the subtitles they would have picked.
+      const wanted = list.find((t) => t.languageCode === preferredLang) || list[0];
+      player.setOption('captions', 'track', wanted);
+    } catch {
+      return null; // captions module unavailable; the fallbacks still apply
+    }
+
+    // The request is fired off the player's own timers, so poll briefly.
+    for (let i = 0; i < 30 && !potParams; i++) await sleep(100);
+
+    try {
+      player.setOption('captions', 'track', previous || {});
+    } catch {
+      /* best effort: leaving captions on is worse than an exception here */
+    }
+    return potParams;
+  }
+
   async function handleFetchTrack(msg) {
     const baseUrl = msg.baseUrl;
     const trackInfo = msg.trackInfo || null;
@@ -458,6 +544,12 @@
           throw new Error('caption URL is not a YouTube host');
         }
         url.searchParams.set('fmt', 'json3');
+        // Without these the endpoint returns 200 and nothing at all.
+        const proof = await ensurePot(trackInfo && trackInfo.languageCode);
+        if (proof) {
+          url.searchParams.set('pot', proof.pot);
+          url.searchParams.set('c', proof.c);
+        }
         const res = await fetch(url.toString(), {
           credentials: 'same-origin',
           signal: timeoutSignal(TIMEDTEXT_TIMEOUT),
@@ -508,6 +600,8 @@
     }
     return { seconds };
   }
+
+  watchForPot();
 
   const HANDLERS = { transcript: handleTranscript, fetchTrack: handleFetchTrack, seek: handleSeek };
 
