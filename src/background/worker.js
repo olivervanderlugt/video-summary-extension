@@ -27,6 +27,7 @@ const DEFAULTS = {
   lang: 'en',
   defaultMode: 'detailed',
   autoRun: false,
+  openPanel: false, // show the panel expanded on every watch page
   maxTokens: 4000,
 };
 
@@ -696,6 +697,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         // only to be told at the end.
         answer({
           autoRun: s.autoRun,
+          openPanel: s.openPanel,
           defaultMode: s.defaultMode,
           lang: s.lang,
           hasKey: !!activeKey(s),

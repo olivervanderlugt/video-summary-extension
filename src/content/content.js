@@ -61,6 +61,11 @@
     },
     NO_PLAYER: { title: "Couldn't read the video data", body: 'Reload the page and try again.' },
     PAGE_TIMEOUT: { title: 'The page stopped responding', body: 'Reload the page and try again.' },
+    NEEDS_PLAY: {
+      title: 'Press play first',
+      calm: true,
+      body: 'YouTube only releases caption text while the video is playing. Start it, give it a second, then summarize.',
+    },
     NO_KEY: { title: 'No API key configured', action: 'options', body: 'Add your provider key in the extension settings.' },
     NO_BASE_URL: {
       title: 'No server address configured',
@@ -470,6 +475,7 @@
     try {
       const settings = (await sendMessage({ type: 'getSettings' })) || {};
       state.autoRun = settings.autoRun === true; // never spend money by default
+      state.openPanel = settings.openPanel === true;
       state.hasKey = settings.hasKey !== false;
       if (MODES.some((m) => m.id === settings.defaultMode) && !state.modeChosen) {
         state.mode = settings.defaultMode;
@@ -743,6 +749,7 @@
         // 40s, not the default 20s: inject's own worst case is 15s timedtext
         // plus the panel and innertube fallbacks, and aborting at 20s throws
         // away a strategy chain that was still working.
+        busyStatus('Fetching captions…');
         const res = await pageCall(
           'fetchTrack',
           {
@@ -1095,6 +1102,7 @@
     mountTries = 0;
     mount();
     if (state.expanded) showCachedOrIdle();
+    if (state.openPanel && !state.autoRun) expand();
     if (state.autoRun) start({});
   }
 
@@ -1128,6 +1136,9 @@
     state.videoId = isWatch() ? currentVideoId() : null;
     mount();
     if (document.body) observer.observe(document.body, { childList: true, subtree: true });
+    // Opening the panel costs nothing — it just shows the summary controls
+    // without running anything. autoRun is the one that spends money.
+    if (state.videoId && state.openPanel && !state.autoRun) expand();
     if (state.videoId && state.autoRun) start({});
   }
 

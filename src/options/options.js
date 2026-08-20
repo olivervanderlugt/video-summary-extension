@@ -8,6 +8,7 @@ const DEFAULTS = {
   lang: 'en',
   defaultMode: 'detailed',
   autoRun: false,
+  openPanel: false,
   maxTokens: 4000,
   // Set once the first-visit walkthrough has been finished or skipped.
   onboardingDone: false,
@@ -83,6 +84,7 @@ const el = {
   modeHint: $('modeHint'),
   maxTokens: $('maxTokens'),
   autoRun: $('autoRun'),
+  openPanel: $('openPanel'),
   wipeBtn: $('wipeBtn'),
   wipeConfirm: $('wipeConfirm'),
   wipeCancel: $('wipeCancel'),
@@ -636,6 +638,11 @@ function wire() {
     save();
   });
 
+  el.openPanel.addEventListener('change', () => {
+    settings.openPanel = el.openPanel.checked;
+    save();
+  });
+
   el.autoRun.addEventListener('change', () => {
     settings.autoRun = el.autoRun.checked;
     save();
@@ -713,6 +720,7 @@ function fill() {
   el.lang.value = settings.lang || '';
   el.maxTokens.value = settings.maxTokens;
   el.autoRun.checked = !!settings.autoRun;
+  el.openPanel.checked = !!settings.openPanel;
   el.defaultMode.value = settings.defaultMode;
 }
 

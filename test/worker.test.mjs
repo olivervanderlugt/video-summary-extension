@@ -99,7 +99,7 @@ test('getSettings never hands an API key to the content script', async () => {
   const reply = await send({ type: 'getSettings' });
   // An exact key set, deliberately: adding a field here should be a decision,
   // not something that slips in. `hasKey` is a boolean, never the key itself.
-  assert.deepEqual(Object.keys(reply).sort(), ['autoRun', 'defaultMode', 'hasKey', 'lang']);
+  assert.deepEqual(Object.keys(reply).sort(), ['autoRun', 'defaultMode', 'hasKey', 'lang', 'openPanel']);
   assert.equal(reply.hasKey, true);
   assert.ok(!JSON.stringify(reply).includes('SECRET'), 'a key leaked into the reply');
 });

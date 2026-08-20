@@ -31,9 +31,9 @@
   window.__vseInjected = true;
 
   const OUT = 'vse-page';
-  const TIMEDTEXT_TIMEOUT = 15000;
-  const PANEL_TIMEOUT = 8000;
-  const INNERTUBE_TIMEOUT = 10000;
+  const TIMEDTEXT_TIMEOUT = 8000;
+  const PANEL_TIMEOUT = 4000;
+  const INNERTUBE_TIMEOUT = 6000;
 
   const reply = (reqId, data) => window.postMessage({ source: OUT, reqId, ok: true, data }, location.origin);
   const fail = (reqId, code, message) =>
@@ -513,6 +513,15 @@
    * back exactly as they were — the user should not find subtitles switched on
    * because they pressed Summarize.
    */
+  function isPaused() {
+    try {
+      const player = document.getElementById('movie_player');
+      return !player || !player.getPlayerState || player.getPlayerState() !== 1;
+    } catch {
+      return false; // unreadable player: do not use this as a reason to give up
+    }
+  }
+
   async function ensurePot(preferredLang) {
     if (potParams) return potParams;
     const player = document.getElementById('movie_player');
@@ -596,6 +605,17 @@
     }
 
     if (json3) return { json3, trackInfo, strategy: 'captions' };
+
+    // No caption text, and no token to ask again with. YouTube only issues one
+    // while the video is playing, so on a paused player this is not a slow
+    // path — it is a dead one. Fail in a second with something the viewer can
+    // act on instead of grinding through fallbacks for another half minute.
+    if (!potParams && isPaused()) {
+      throw errored(
+        'NEEDS_PLAY',
+        'YouTube only releases caption text while the video is playing. Press play, give it a second, then hit Summarize again.'
+      );
+    }
 
     // Same rule as handleTranscript: the fallbacks scrape ungated page state, so
     // they may only run while the player still confirms this video. A navigation
