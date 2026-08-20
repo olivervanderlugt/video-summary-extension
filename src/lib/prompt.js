@@ -115,9 +115,18 @@ function metaBlock(meta = {}) {
     );
   }
   lines.push(
-    meta.isAuto
-      ? 'Captions: auto-generated — expect misheard names, jargon and punctuation.'
-      : 'Captions: human-authored.'
+    // Three states, not two. The page can only tell us how the captions were
+    // made when it read them off a listed caption track; the fallback paths
+    // scrape whatever YouTube had rendered and genuinely do not know. Claiming
+    // either answer there is a guess, and both guesses cost something: calling
+    // clean captions auto-generated hedges correct figures into vagueness,
+    // calling auto-captions human-authored stops the model flagging misheard
+    // names on exactly the noisiest transcripts.
+    meta.isAuto == null
+      ? 'Captions: source unknown — they may be auto-generated, so treat unusual proper nouns and numbers with the same caution you would there.'
+      : meta.isAuto
+        ? 'Captions: auto-generated — expect misheard names, jargon and punctuation.'
+        : 'Captions: human-authored.'
   );
   // Set when the transcript stops well short of the video's runtime. Say so in
   // the summary rather than presenting a partial view as the whole video.

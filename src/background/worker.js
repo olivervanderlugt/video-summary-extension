@@ -36,6 +36,9 @@ const DEFAULTS = {
 const SINGLE_PASS_CHARS = 100_000;
 // The provider codes worth one more attempt; everything else is a real answer.
 const RETRYABLE = new Set(['rate_limit', 'server']);
+// Long enough that a rate limit has a chance to clear, short enough that a user
+// waiting on a summary does not think it hung.
+const RETRY_DELAY_MS = 1500;
 const RENDER_INTERVAL_MS = 80;
 
 async function loadSettings() {
@@ -84,8 +87,10 @@ class AppError extends Error {
 
 /** Anything thrown inside a run is funnelled through here before it reaches a user. */
 function toUserError(err) {
-  if (err instanceof AppError) return { code: err.code, message: err.message };
   if (err?.name === 'AbortError') return { code: 'CANCELLED', message: 'Stopped.' };
+  // AppError from this file and ProviderError from the adapters both carry the
+  // code the panel keys its copy off — and the code the retry below reads.
+  if (typeof err?.code === 'string' && err.code) return { code: err.code, message: err.message };
   if (err instanceof TypeError) {
     return {
       code: 'NETWORK',
@@ -143,6 +148,24 @@ async function* streamCompletion({ settings, adapter, system, messages, signal }
       'EMPTY',
       'The provider accepted the request but returned no text. This usually means the model refused the content or the request was too long.'
     );
+  }
+}
+
+/**
+ * One more attempt, and only for the two failures that are usually transient.
+ * Never a placeholder and never a skipped section: a summary that reads as
+ * complete and is not is the worst thing this can ship, so a second failure
+ * fails the whole run.
+ */
+async function withRetry(attempt, onRetry) {
+  try {
+    return await attempt();
+  } catch (err) {
+    if (!RETRYABLE.has(err?.code)) throw err;
+    onRetry?.();
+    // A 429 answered instantly is a 429 again, and a second billed request.
+    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    return attempt();
   }
 }
 
@@ -273,11 +296,6 @@ class Session {
       const settings = await loadSettings();
       const adapter = getProvider(settings.provider);
 
-      // Ready-made cues mean the page fell back to scraping the transcript panel
-      // or get_transcript, and both of those only ever exist for auto-captions.
-      // The page reports `isAuto` at the top level of its own reply, not inside
-      // `trackInfo`, so the flag never reaches us — telling the model the
-      // captions are human-authored, which stops it flagging misheard names.
       const scraped = Array.isArray(readyCues) && readyCues.length > 0;
       const cues = scraped ? readyCues : parseJson3(json3);
       if (!cues.length) {
@@ -291,7 +309,12 @@ class Session {
 
       const meta = {
         ...this.meta,
-        isAuto: scraped || !!trackInfo?.isAuto,
+        // Never inferred. The scraping strategies take whichever track YouTube
+        // had selected — often a human-authored one — so "scraped" says nothing
+        // about how the captions were made. Pass on what the page told us and
+        // leave it undefined when it told us nothing: an unfounded "auto" hedges
+        // correct figures into vagueness, an unfounded "human" does the reverse.
+        isAuto: trackInfo?.isAuto,
         lang: trackInfo?.languageCode,
       };
 
@@ -332,6 +355,7 @@ class Session {
             },
           ],
           signal: controller.signal,
+          onRetry: () => this.status('summarizing', { retry: true }),
         });
       } else {
         final = await this.mapReduce({ settings, adapter, system, meta, mode: useMode, controller });
@@ -357,12 +381,17 @@ class Session {
     }
   }
 
-  async streamInto({ settings, adapter, system, messages, signal }) {
+  async streamInto({ settings, adapter, system, messages, signal, onRetry }) {
     const start = this.buffer.length;
-    for await (const delta of streamCompletion({ settings, adapter, system, messages, signal })) {
-      this.buffer += delta;
-      this.pushRender();
-    }
+    await withRetry(async () => {
+      // A retry starts the answer over; the half that broke must not stay in
+      // the buffer, or the panel shows it twice.
+      this.buffer = this.buffer.slice(0, start);
+      for await (const delta of streamCompletion({ settings, adapter, system, messages, signal })) {
+        this.buffer += delta;
+        this.pushRender();
+      }
+    }, onRetry);
     return this.buffer.slice(start);
   }
 
@@ -383,24 +412,15 @@ class Session {
       const messages = [
         { role: 'user', content: buildChunkPrompt({ meta, chunk, transcriptText: text, mode }) },
       ];
-      const run = () =>
-        collect(streamCompletion({ settings, adapter, system, messages, signal: controller.signal }));
-
-      let partial;
-      try {
-        partial = await run();
-      } catch (err) {
-        // One retry, and only for the two failures that are usually transient.
-        // No sleep: generating the earlier chunks already spaced the calls out.
-        // Never a placeholder — a summary that reads complete and is not is the
-        // worst thing this can ship, so a second failure fails the whole run.
-        if (!RETRYABLE.has(err?.code)) throw err;
-        this.status('section', { index: chunk.index + 1, total: chunks.length, retry: true });
-        partial = await run();
-      }
+      const partial = await withRetry(
+        () => collect(streamCompletion({ settings, adapter, system, messages, signal: controller.signal })),
+        () => this.status('section', { index: chunk.index + 1, total: chunks.length, retry: true })
+      );
       partials.push(partial);
     }
 
+    // The reduce pass is the expensive one to lose: failing it throws away every
+    // map call the user already paid for.
     this.status('summarizing');
     return this.streamInto({
       settings,
@@ -408,6 +428,7 @@ class Session {
       system,
       messages: [{ role: 'user', content: buildReducePrompt({ meta, partials, mode }) }],
       signal: controller.signal,
+      onRetry: () => this.status('summarizing', { retry: true }),
     });
   }
 

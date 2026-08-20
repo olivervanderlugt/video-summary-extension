@@ -165,3 +165,20 @@ test('no language claim is made when the track language is unknown', () => {
   });
   assert.ok(!/Write the summary in this language/.test(prompt));
 });
+
+test('caption provenance has three states, not two', () => {
+  // The worker can only say how captions were made when it read a listed
+  // caption track. The fallback strategies scrape whatever YouTube rendered and
+  // genuinely do not know — and both guesses cost something: calling clean
+  // captions auto-generated hedges correct figures, calling auto-captions clean
+  // stops the model flagging misheard names on the noisiest transcripts.
+  const line = (meta) =>
+    buildSummaryPrompt({ meta: { title: 'T', duration: 60, ...meta }, transcriptText: 'x', mode: 'detailed' })
+      .split('\n')
+      .find((l) => l.startsWith('Captions'));
+
+  assert.match(line({ isAuto: true }), /auto-generated/);
+  assert.match(line({ isAuto: false }), /human-authored/);
+  assert.match(line({}), /unknown/, 'an unknown source must not be asserted either way');
+  assert.ok(!/human-authored/.test(line({})), 'unknown must not claim the captions are clean');
+});

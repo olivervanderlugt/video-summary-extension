@@ -102,5 +102,9 @@ export function streamError(error, provider) {
     return new ProviderError('unknown', detail || 'The provider reported an error mid-response.');
   }
   const { code, message } = statusError(status, detail, provider);
-  return new ProviderError(code, message);
+  // statusError drops the detail for most statuses — for an HTTP failure the
+  // body is boilerplate. Mid-stream it is the only clue (which limit, which
+  // model), and test/providers pins that it survives, so keep it.
+  const full = detail && !message.includes(detail) ? `${message} (${detail})` : message;
+  return new ProviderError(code, full);
 }
