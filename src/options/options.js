@@ -393,6 +393,9 @@ function validateBaseUrl() {
     say(el.baseUrlMsg, r.error, 'err');
     el.grantBtn.hidden = true;
     el.testBtn.disabled = true;
+    // An earlier pass described a different server. It does not describe this.
+    say(el.testResult, '');
+    updateState(false);
     return null;
   }
   el.testBtn.disabled = false;
@@ -448,6 +451,7 @@ function wire() {
   el.key.addEventListener('input', () => {
     commitKeyProvider();
     settings.keys[settings.provider] = el.key.value.trim();
+    say(el.testResult, '');   // the key that passed is not the key in the field
     updateState(false);
     saveSoon();
   });
