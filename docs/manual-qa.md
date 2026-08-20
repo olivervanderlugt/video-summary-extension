@@ -26,6 +26,22 @@ the service worker, or the content scripts.
 - [ ] A deliberately wrong key reports a plain sentence, not a stack trace
 - [ ] Switching provider preserves the key you already entered for the other one
 - [ ] Reloading the options page shows everything still set
+- [ ] The caption language dropdown lists **Automatic — whatever the video offers** first, and the choice survives a page reload
+
+## OpenRouter sign-in
+
+Needs a real OpenRouter account. The **Sign in with OpenRouter** button only
+appears while OpenRouter is the selected provider — no other provider should
+show it.
+
+- [ ] **Sign in with OpenRouter** opens a popup window on openrouter.ai, not a tab, and not a blank window
+- [ ] Approving it closes the popup, reports success, switches the provider to OpenRouter, and fills the key field with an `sk-or-` key
+- [ ] **Test this key** then succeeds against that key without you typing anything
+- [ ] A summary actually runs on the signed-in key, and the network tab shows the request going to `openrouter.ai`
+- [ ] Closing the popup part-way reports "Sign-in cancelled" as a plain sentence, not an error dump, and the button becomes usable again
+- [ ] After a cancelled sign-in, reload the options page: provider, keys, model, language and every other setting are exactly as they were before you pressed the button — nothing was written
+- [ ] Cancelling while a *different* provider's key is already stored leaves that key and that provider selected
+- [ ] With the extension signed in, the key it stored appears in your list at <https://openrouter.ai/keys>, and revoking it there makes the next summary fail with a plain message
 
 ## Transcript acquisition — the fragile part
 
@@ -39,6 +55,9 @@ Test at least one video from each row. Note which strategy the panel reports.
 - [ ] **Live** stream → clear message, no hang
 - [ ] Age-restricted or members-only video → clear message, no hang
 - [ ] Non-English video → picks the right track, summary is in a sensible language
+- [ ] Video offering **several caption tracks** (say English plus one other): set the language dropdown to the other one, summarize, and the summary comes back in that language — then set it back to English on the same video and it comes back in English
+- [ ] Same video on **Automatic**: it takes the English track if the video has one, and does not error when it does not
+- [ ] Pick a language the video does not offer → falls back rather than failing, and the summary is still of the right video
 
 If the caption fetch returns HTTP 200 with an empty body, that is the
 proof-of-origin restriction, not a bug in the parser — confirm the panel falls

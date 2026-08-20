@@ -3,12 +3,13 @@
   "name": "Video Summary",
   "version": "0.1.0",
   "description": "AI summaries of YouTube videos with clickable timestamps, using your own API key.",
-  "permissions": ["storage"],
+  "permissions": ["storage", "identity"],
   "externally_connectable": { "ids": [], "matches": [] },
   "host_permissions": [
     "https://api.anthropic.com/*",
     "https://api.openai.com/*",
-    "https://generativelanguage.googleapis.com/*"
+    "https://generativelanguage.googleapis.com/*",
+    "https://openrouter.ai/*"
   ],
   "optional_host_permissions": [
     "https://*/*",

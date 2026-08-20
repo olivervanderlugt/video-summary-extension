@@ -28,36 +28,91 @@ cd video-summary-extension
 4. Select the `video-summary-extension` folder you just cloned
 5. The settings page opens by itself on first install. If it doesn't, click the
    extension's icon in the toolbar.
-6. Pick a provider, paste your API key, and press **Test this key**
+6. Pick a provider. With OpenRouter you press **Sign in with OpenRouter** and
+   authorise it in the popup; with the others you paste an API key. Either way,
+   press **Test this key** afterwards.
 
 Your settings are stored locally and persist across browser restarts — you set
-the key once. There is no account, no sign-in, and nothing is synced anywhere:
-see [PRIVACY.md](PRIVACY.md). Until a key is set, the panel says so and offers a
-link to the settings, rather than letting you start a summary that can only end
-in an error.
+the key once. The extension itself has no account and no server, and nothing is
+synced anywhere; the only sign-in involved is the optional one to OpenRouter,
+which is a sign-in to them, not to this: see [PRIVACY.md](PRIVACY.md). Until a
+key is set, the panel says so and offers a link to the settings, rather than
+letting you start a summary that can only end in an error.
+
+The rest of the settings page is short: model, summary style, output length, an
+auto-summarise toggle that is off by default, a base URL field for the
+OpenAI-compatible provider, and **Preferred caption language** — a dropdown with
+an "Automatic — whatever the video offers" entry and about two dozen named
+languages, set to English on a fresh install. It decides which caption track is
+used when a video offers several, and in doing so it usually decides which
+language the summary comes back in: the model is given the transcript and told
+what language it is in, and answers in kind. Nothing in the prompt hard-forces
+that, so it is a strong tendency rather than a guarantee. If the language you
+picked is not among the tracks, the extension falls back to English, then to
+whatever the video does have; on **Automatic** it goes straight to that
+fallback.
 
 If the icons are missing, generate them first — see
 [Generating the icons](#generating-the-icons).
 
 ## Getting a key
 
-You need an account and a key with one of these. You pay them directly; this
-extension never sees a cent and never sees your key.
+You need an account with one of these. You pay them directly; this extension
+never sees a cent and never sees your key.
 
-| Provider | Where to get a key |
+| Provider | How you get access |
 | --- | --- |
-| Anthropic (Claude) | <https://console.anthropic.com/settings/keys> |
-| OpenAI | <https://platform.openai.com/api-keys> |
-| Google Gemini | <https://aistudio.google.com/app/apikey> |
-| OpenAI-compatible | Whatever your server issues — Ollama, LM Studio, vLLM, OpenRouter, Together, and similar. Local servers usually need no key at all; you enter the server's base URL instead. |
+| OpenRouter | Press **Sign in with OpenRouter** on the settings page — there is no key to copy. Pasting one from <https://openrouter.ai/keys> also works. |
+| Anthropic (Claude) | Paste a key from <https://console.anthropic.com/settings/keys> |
+| OpenAI | Paste a key from <https://platform.openai.com/api-keys> |
+| Google Gemini | Paste a key from <https://aistudio.google.com/app/apikey> |
+| OpenAI-compatible | Whatever your server issues — Ollama, LM Studio, vLLM, Together, and similar. Local servers usually need no key at all; you enter the server's base URL instead. |
+
+OpenRouter is the easiest place to start, because it is the only one you can set
+up without visiting a console: you sign in and it mints a key for this
+extension. It proxies models from Anthropic, OpenAI and Google, so it is also a
+way to reach Claude without holding an Anthropic key — the model it defaults to
+here is `anthropic/claude-sonnet-5`. The trade is that OpenRouter is then the
+party that receives your transcript and the party that bills you.
 
 Google's AI Studio has a free tier at the time of writing, which makes Gemini
 the cheapest way to try this.
 
+### Signing in instead of pasting a key
+
+**Sign in with OpenRouter** opens OpenRouter's authorisation page in a popup
+window (`chrome.identity.launchWebAuthFlow`). You approve it there, OpenRouter
+sends a one-time code back to the extension's own callback URL, and the
+extension trades that code at `https://openrouter.ai/api/v1/auth/keys` for a
+key.
+
+The exchange is OAuth with PKCE (`src/lib/pkce.js`): the extension generates a
+random verifier, sends only its SHA-256 hash when it opens the popup, and
+reveals the verifier when it redeems the code, so a code intercepted on the way
+back is useless on its own. There is no client secret and no client
+registration — an extension cannot keep a secret, which is the case PKCE exists
+for.
+
+The key that comes back is stored **exactly like a pasted one**: same
+`chrome.storage.local`, same absence of encryption, same protections and the
+same missing ones. Signing in changes how you obtain the key, not where it lives
+or how it is guarded — it is more convenient, not more secure. On success the
+extension switches the active provider to OpenRouter and puts the key in the
+field a pasted key would have gone in. If you close the popup part-way, it
+reports "Sign-in cancelled" and writes nothing.
+
+The other providers have no equivalent, and that is not an omission here.
+Anthropic prohibits third-party apps from signing users in against their
+subscription and issues no client IDs for them, and OpenAI has no authorization
+endpoint that mints a key billed to a user's account. For those two, a pasted
+API key is the only mechanism they offer.
+
 ## What it costs
 
-You are billed by your provider, per request, with no markup. The cost is driven
-almost entirely by the transcript length.
+You are billed by your provider, per request, and this extension adds no markup
+of its own. The cost is driven almost entirely by the transcript length. Through
+OpenRouter you pay OpenRouter rather than the model's owner, on OpenRouter's
+published prices, which are not necessarily what the owner charges directly.
 
 A 30-minute video is roughly 4,500 spoken words, which is about 6,000 input
 tokens, plus 1,000–2,000 tokens of summary out. In practice that lands somewhere
@@ -101,7 +156,9 @@ Read this before pasting a key anywhere, including here.
 
 Your API key is stored in `chrome.storage.local`, **unencrypted**. Anyone with
 access to your Chrome profile directory can read it, exactly as they could read
-the passwords Chrome has saved for you. This extension does not claim to encrypt
+the passwords Chrome has saved for you. A key obtained by signing in to
+OpenRouter sits in the same place with the same lack of protection — the sign-in
+saves you a trip to a console, and buys you nothing else. This extension does not claim to encrypt
 it, because encrypting a key while storing the passphrase beside it in the same
 extension is theatre, not security.
 
@@ -112,17 +169,44 @@ What the design does do:
   youtube.com — YouTube's own or anyone else's — can read it.
 - The key is written to `chrome.storage.local`, never `chrome.storage.sync`, so
   it is never uploaded to your Google account.
-- The only outbound requests are to the provider you configured. No analytics,
-  no telemetry, no remote code, no external fonts or scripts.
+- The only outbound requests are to the provider you configured, plus the
+  OpenRouter sign-in exchange when you press that button. No analytics, no
+  telemetry, no remote code, no external fonts or scripts.
 - The transcript is passed to the model inside a delimited block with an explicit
   instruction that it is data and not instruction, and the closing delimiter is
   stripped from the transcript first, so a video cannot close the block early and
   address the model directly.
 - Model output is rendered by escaping every character; no `innerHTML` ever
   touches model or transcript text.
-- Permissions are narrow: youtube.com, the three provider API hosts, and
-  `storage`. No `<all_urls>`, no `tabs`, no `webRequest`. A custom server URL
-  requests access to that one origin, at the moment you enter it.
+- Permissions are narrow, and listed in full below. No `<all_urls>` granted at
+  install, no `tabs`, no `webRequest`.
+
+### Every permission it asks for
+
+From `manifest.json`, granted at install:
+
+- `storage` — keeps your settings and keys on this machine, in
+  `chrome.storage.local` only.
+- `identity` — opens the OpenRouter sign-in popup and provides the callback URL
+  it returns to. That is its only use: the extension never calls
+  `chrome.identity.getProfileUserInfo` or anything else that would read your
+  Chrome or Google account.
+- `https://api.anthropic.com/*`, `https://api.openai.com/*`,
+  `https://generativelanguage.googleapis.com/*`, `https://openrouter.ai/*` — the
+  four provider endpoints, so the summary request can be sent to whichever one
+  you chose. `openrouter.ai` covers both the sign-in exchange and the summary
+  requests.
+- `https://www.youtube.com/*` — declared by the two content scripts rather than
+  as a host permission, but Chrome shows it as site access all the same. It is
+  what lets the extension add the button and panel to a watch page and read the
+  caption track.
+
+Optional, and not granted at install:
+
+- `https://*/*`, `http://localhost/*`, `http://127.0.0.1/*` — only for the
+  OpenAI-compatible provider. Nothing is granted until you enter a base URL, and
+  then Chrome is asked for that one origin, not the pattern. Point the setting
+  somewhere else and the previous origin's grant is handed back.
 
 The practical advice: mint a key that this extension is the only user of, and
 put a spend limit on it. Then the worst case is bounded and one click away from
@@ -161,7 +245,7 @@ src/background/worker.js Message router, storage, provider dispatch — the only
 src/providers/*.js       One adapter per provider: request shape, delta
                          extraction, error sentences
 src/lib/*.js             SSE parsing, transcript handling, chunking, prompts,
-                         markdown rendering
+                         markdown rendering, PKCE for the OpenRouter sign-in
 src/options/*            This settings page
 test/                    node --test suites and SSE fixtures
 docs/                    Design spec

@@ -195,3 +195,205 @@ test('a malformed begin reports an error instead of leaving the panel spinning',
     `unexpected reply: ${JSON.stringify(posted)}`
   );
 });
+
+// ---------------------------------------------------------------------------
+// OpenRouter sign-in (PKCE).
+//
+// This is the one flow where a bug hands the user a broken extension that looks
+// signed in: an empty key stored under `openrouter` with the provider switched
+// over reads as success in the options page and then fails on every summary. So
+// every failure case below asserts on storage as well as on the reply.
+// ---------------------------------------------------------------------------
+
+import { challengeFor } from '../src/lib/pkce.js';
+
+/** Scripted outcome for launchWebAuthFlow, plus a record of what it was asked. */
+const auth = { calls: [], redirect: null, error: null };
+
+chrome.identity = {
+  getRedirectURL: (path = '') => `https://${EXT_ID}.chromiumapp.org/${path}`,
+  launchWebAuthFlow: async (options) => {
+    auth.calls.push(options);
+    if (auth.error) throw auth.error;
+    return auth.redirect;
+  },
+};
+
+/** Point the flow at an outcome and stub the token exchange in one place. */
+function scriptSignIn({ redirect = null, error = null, exchange }) {
+  auth.calls.length = 0;
+  auth.redirect = redirect;
+  auth.error = error;
+  const posts = [];
+  globalThis.fetch = async (url, init) => {
+    posts.push({ url: String(url), init });
+    return exchange ? exchange() : { ok: true, json: async () => ({ key: 'sk-or-MINTED' }) };
+  };
+  return posts;
+}
+
+/** The challenge the user's browser was actually sent to OpenRouter with. */
+function sentChallenge() {
+  return new URL(auth.calls[0].url).searchParams.get('code_challenge');
+}
+
+test('signing in stores the minted key and switches to OpenRouter', async () => {
+  setSettings({ provider: 'anthropic' });
+  scriptSignIn({ redirect: `https://${EXT_ID}.chromiumapp.org/?code=AUTH_CODE` });
+
+  const reply = await send({ type: 'signIn' });
+  assert.equal(reply.ok, true, `sign-in failed: ${JSON.stringify(reply)}`);
+
+  // Assert on storage, not on the reply: the reply is what the options page
+  // shows, storage is what every later summary actually reads.
+  assert.equal(storage.settings.keys.openrouter, 'sk-or-MINTED');
+  assert.equal(storage.settings.provider, 'openrouter');
+  // The keys the user already had must survive being handed a new one.
+  assert.equal(storage.settings.keys.anthropic, 'sk-ant-SECRET');
+});
+
+test('the token exchange sends the verifier, not the challenge', async () => {
+  setSettings({});
+  const posts = scriptSignIn({ redirect: `https://${EXT_ID}.chromiumapp.org/?code=AUTH_CODE` });
+
+  await send({ type: 'signIn' });
+
+  assert.equal(posts.length, 1, 'expected exactly one call to the token endpoint');
+  assert.equal(posts[0].url, 'https://openrouter.ai/api/v1/auth/keys');
+  assert.equal(posts[0].init.method, 'POST');
+
+  const body = JSON.parse(posts[0].init.body);
+  assert.equal(body.code, 'AUTH_CODE');
+  assert.equal(body.code_challenge_method, 'S256');
+  assert.ok(body.code_verifier, 'no code_verifier was sent');
+
+  // The whole security value of PKCE is that the second leg proves knowledge of
+  // the secret behind the first leg's hash. Sending the challenge back is a
+  // real mistake — it round-trips cleanly and proves nothing — so pin both that
+  // they differ and that the verifier actually hashes to what was sent.
+  const challenge = sentChallenge();
+  assert.notEqual(body.code_verifier, challenge, 'the challenge was sent as the verifier');
+  assert.equal(await challengeFor(body.code_verifier), challenge, 'verifier does not match the challenge');
+});
+
+test('each sign-in uses a fresh verifier', async () => {
+  setSettings({});
+  const first = scriptSignIn({ redirect: `https://${EXT_ID}.chromiumapp.org/?code=A` });
+  await send({ type: 'signIn' });
+  const second = scriptSignIn({ redirect: `https://${EXT_ID}.chromiumapp.org/?code=B` });
+  await send({ type: 'signIn' });
+
+  assert.notEqual(
+    JSON.parse(first[0].init.body).code_verifier,
+    JSON.parse(second[0].init.body).code_verifier
+  );
+});
+
+test('closing the sign-in window is reported as cancelled and changes nothing', async () => {
+  setSettings({ provider: 'anthropic' });
+  const before = JSON.stringify(storage);
+  const posts = scriptSignIn({ error: new Error('The user cancelled the sign-in flow.') });
+
+  const reply = await send({ type: 'signIn' });
+  assert.equal(reply.ok, false);
+  assert.equal(reply.code, 'CANCELLED');
+  assert.equal(posts.length, 0, 'a cancelled flow still hit the token endpoint');
+  assert.equal(JSON.stringify(storage), before, 'a cancelled sign-in modified stored settings');
+});
+
+test('a redirect with no code fails clearly and changes nothing', async () => {
+  setSettings({ provider: 'anthropic' });
+  const before = JSON.stringify(storage);
+  const posts = scriptSignIn({ redirect: `https://${EXT_ID}.chromiumapp.org/?error=access_denied` });
+
+  const reply = await send({ type: 'signIn' });
+  assert.equal(reply.ok, false);
+  assert.equal(reply.code, 'NO_CODE');
+  assert.match(reply.message, /\S/);
+  assert.equal(posts.length, 0, 'exchanged a code that was never returned');
+  assert.equal(JSON.stringify(storage), before);
+});
+
+test('a refused exchange explains itself and changes nothing', async () => {
+  setSettings({ provider: 'anthropic' });
+  const before = JSON.stringify(storage);
+  scriptSignIn({
+    redirect: `https://${EXT_ID}.chromiumapp.org/?code=AUTH_CODE`,
+    exchange: () => ({ ok: false, status: 403, text: async () => 'forbidden' }),
+  });
+
+  const reply = await send({ type: 'signIn' });
+  assert.equal(reply.ok, false);
+  // The user cannot act on a stack trace. They can act on "try again, or paste
+  // a key instead", which is the fallback the options page still offers.
+  assert.match(reply.message, /try again|paste a key/i, `unhelpful message: ${reply.message}`);
+  assert.ok(!reply.message.includes('undefined'), `leaked internals: ${reply.message}`);
+  assert.equal(JSON.stringify(storage), before);
+});
+
+test('an exchange that returns no key stores nothing', async () => {
+  setSettings({ provider: 'anthropic' });
+  const before = JSON.stringify(storage);
+  scriptSignIn({
+    redirect: `https://${EXT_ID}.chromiumapp.org/?code=AUTH_CODE`,
+    exchange: () => ({ ok: true, json: async () => ({ user_id: 'u_1' }) }),
+  });
+
+  const reply = await send({ type: 'signIn' });
+  assert.equal(reply.ok, false);
+  // Storing '' here would flip the provider to openrouter and read as signed
+  // in, then fail on every single summary with a key error.
+  assert.equal(JSON.stringify(storage), before, 'an empty key was stored');
+  assert.notEqual(storage.settings.provider, 'openrouter');
+});
+
+test('an empty-string key from the exchange is refused too', async () => {
+  setSettings({ provider: 'anthropic' });
+  const before = JSON.stringify(storage);
+  scriptSignIn({
+    redirect: `https://${EXT_ID}.chromiumapp.org/?code=AUTH_CODE`,
+    exchange: () => ({ ok: true, json: async () => ({ key: '' }) }),
+  });
+
+  const reply = await send({ type: 'signIn' });
+  assert.equal(reply.ok, false);
+  assert.equal(JSON.stringify(storage), before);
+});
+
+test('a non-JSON 200 from the token endpoint fails instead of throwing', async () => {
+  // A captive portal or a proxy answering with HTML: the handler must still
+  // reply, or the options page sits on "Signing in…" with nothing to click.
+  setSettings({ provider: 'anthropic' });
+  const before = JSON.stringify(storage);
+  scriptSignIn({
+    redirect: `https://${EXT_ID}.chromiumapp.org/?code=AUTH_CODE`,
+    exchange: () => ({
+      ok: true,
+      json: async () => {
+        throw new SyntaxError('Unexpected token < in JSON at position 0');
+      },
+    }),
+  });
+
+  const reply = await send({ type: 'signIn' });
+  assert.equal(reply.ok, false);
+  // Handled by the sign-in path itself, not by the worker's outermost catch:
+  // that fallback answers "The extension hit an unexpected error: Unexpected
+  // token <", which tells the user nothing they can do anything about.
+  assert.equal(reply.code, 'EXCHANGE_FAILED', `fell through to the generic handler: ${JSON.stringify(reply)}`);
+  assert.match(reply.message, /try again|paste a key/i, `unhelpful message: ${reply.message}`);
+  assert.ok(!/unexpected token/i.test(reply.message), `leaked a parser error: ${reply.message}`);
+  assert.equal(JSON.stringify(storage), before);
+});
+
+test('the authorization URL goes to OpenRouter with the extension redirect', async () => {
+  setSettings({});
+  scriptSignIn({ redirect: `https://${EXT_ID}.chromiumapp.org/?code=AUTH_CODE` });
+  await send({ type: 'signIn' });
+
+  const url = new URL(auth.calls[0].url);
+  assert.equal(url.origin + url.pathname, 'https://openrouter.ai/auth');
+  assert.equal(url.searchParams.get('callback_url'), `https://${EXT_ID}.chromiumapp.org/`);
+  assert.equal(url.searchParams.get('code_challenge_method'), 'S256');
+  assert.equal(auth.calls[0].interactive, true, 'a sign-in the user cannot see cannot be completed');
+});

@@ -36,8 +36,8 @@ const REQ = {
 
 // --- registry ---------------------------------------------------------------
 
-test('registry exposes the four providers with a consistent interface', () => {
-  assert.deepEqual(Object.keys(PROVIDERS), ['anthropic', 'openai', 'gemini', 'compatible']);
+test('registry exposes the five providers with a consistent interface', () => {
+  assert.deepEqual(Object.keys(PROVIDERS), ['anthropic', 'openai', 'gemini', 'openrouter', 'compatible']);
   for (const [key, p] of Object.entries(PROVIDERS)) {
     assert.equal(p.id, key, `${key}.id`);
     assert.equal(typeof p.label, 'string');
@@ -279,3 +279,20 @@ for (const [name, provider] of Object.entries({ anthropic, openai, gemini })) {
     assert.match(provider.parseError(418, '<html>').message, /418/);
   });
 }
+
+test('openrouter is the openai wire format with a base URL it does not ask for', () => {
+  const or = PROVIDERS.openrouter;
+  // Derived, not copied: one implementation of the wire format.
+  assert.equal(or.buildRequest, PROVIDERS.openai.buildRequest);
+  assert.equal(or.supportsSignIn, true);
+  assert.equal(or.requiresBaseUrl, false, 'a fixed base URL must not prompt the user for one');
+  const { url } = or.buildRequest({
+    key: 'sk-or-x',
+    model: or.defaultModel,
+    baseUrl: or.fixedBaseUrl,
+    system: 's',
+    messages: [{ role: 'user', content: 'hi' }],
+    maxTokens: 10,
+  });
+  assert.equal(url, 'https://openrouter.ai/api/v1/chat/completions');
+});

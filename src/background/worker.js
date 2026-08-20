@@ -17,10 +17,11 @@ import {
   buildQuestionPrompt,
 } from '../lib/prompt.js';
 import { renderMarkdown, linkifyTimestamps } from '../lib/markdown.js';
+import { createVerifier, challengeFor, authUrl, codeFromRedirect } from '../lib/pkce.js';
 
 const DEFAULTS = {
   provider: 'anthropic',
-  keys: { anthropic: '', openai: '', gemini: '', compatible: '' },
+  keys: { anthropic: '', openai: '', gemini: '', openrouter: '', compatible: '' },
   model: '',
   baseUrl: '',
   lang: 'en',
@@ -57,6 +58,7 @@ function activeModel(settings, adapter) {
  * key on the next summary. Read it only when the active adapter asks for one.
  */
 function activeBaseUrl(settings, adapter) {
+  if (adapter.fixedBaseUrl) return adapter.fixedBaseUrl; // not user-supplied, so not user-redirectable
   return adapter.requiresBaseUrl ? (settings.baseUrl || '').trim() : '';
 }
 
@@ -466,6 +468,78 @@ chrome.runtime.onConnect.addListener((port) => {
   port.onDisconnect.addListener(() => session.cancel());
 });
 
+/**
+ * Sign in to OpenRouter and store the key it mints for us.
+ *
+ * This is the only provider of the four that offers a sanctioned way for a
+ * third-party app to obtain a user's credential: Anthropic prohibits
+ * subscription OAuth in third-party tools and issues no client IDs, and OpenAI
+ * has no authorization endpoint that mints a user-billed key. PKCE means no
+ * client secret, which is what makes it usable from an extension at all.
+ */
+async function signInWithOpenRouter() {
+  if (!chrome.identity?.launchWebAuthFlow) {
+    return { ok: false, code: 'NO_IDENTITY', message: 'This browser does not support the sign-in flow. Paste an API key instead.' };
+  }
+
+  const verifier = createVerifier();
+  const challenge = await challengeFor(verifier);
+  const callbackUrl = chrome.identity.getRedirectURL();
+
+  let redirect;
+  try {
+    redirect = await chrome.identity.launchWebAuthFlow({
+      url: authUrl({ callbackUrl, challenge }),
+      interactive: true,
+    });
+  } catch (err) {
+    // The user closing the window is the common case, and is not an error.
+    const message = String(err?.message || err);
+    return /cancel|closed by the user/i.test(message)
+      ? { ok: false, code: 'CANCELLED', message: 'Sign-in cancelled.' }
+      : { ok: false, code: 'AUTH_FAILED', message: `Sign-in did not complete: ${message}` };
+  }
+
+  const code = codeFromRedirect(redirect);
+  if (!code) {
+    return { ok: false, code: 'NO_CODE', message: 'OpenRouter did not return an authorization code. Try again, or paste a key instead.' };
+  }
+
+  let response;
+  try {
+    response = await fetch('https://openrouter.ai/api/v1/auth/keys', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code, code_verifier: verifier, code_challenge_method: 'S256' }),
+    });
+  } catch {
+    return { ok: false, code: 'NETWORK', message: 'Could not reach OpenRouter to finish signing in. Check your connection and try again.' };
+  }
+
+  if (!response.ok) {
+    return { ok: false, code: 'EXCHANGE_FAILED', message: `OpenRouter refused to complete sign-in (HTTP ${response.status}). Try again, or paste a key instead.` };
+  }
+
+  let key = '';
+  try {
+    ({ key } = await response.json());
+  } catch {
+    return { ok: false, code: 'EXCHANGE_FAILED', message: 'OpenRouter returned an unreadable response. Try again, or paste a key instead.' };
+  }
+  if (!key) {
+    return { ok: false, code: 'EXCHANGE_FAILED', message: 'OpenRouter completed sign-in but returned no key. Try again, or paste a key instead.' };
+  }
+
+  // Stored exactly like a pasted key: same place, same protections. Signing in
+  // changes how the key is obtained, not where it lives.
+  const settings = await loadSettings();
+  settings.provider = 'openrouter';
+  settings.keys = { ...settings.keys, openrouter: key };
+  await chrome.storage.local.set({ settings });
+
+  return { ok: true, message: 'Signed in to OpenRouter.' };
+}
+
 /** Model list doubles as the key test: it is authenticated and costs nothing. */
 async function listModels(settings) {
   const adapter = getProvider(settings.provider);
@@ -545,6 +619,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         );
         return;
       }
+      case 'signIn':
+        answer(await signInWithOpenRouter());
+        return;
       case 'openOptions':
         chrome.runtime.openOptionsPage();
         answer({ ok: true });

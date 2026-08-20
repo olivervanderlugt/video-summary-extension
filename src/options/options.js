@@ -2,13 +2,15 @@ import { PROVIDERS } from '../providers/index.js';
 
 const DEFAULTS = {
   provider: 'anthropic',
-  keys: { anthropic: '', openai: '', gemini: '', compatible: '' },
+  keys: { anthropic: '', openai: '', gemini: '', openrouter: '', compatible: '' },
   model: '',
   baseUrl: '',
   lang: 'en',
   defaultMode: 'detailed',
   autoRun: false,
   maxTokens: 4000,
+  // Set once the first-visit walkthrough has been finished or skipped.
+  onboardingDone: false,
 };
 
 // prompt.js is the source of truth for modes; if it is unavailable the page must
@@ -22,6 +24,38 @@ const FALLBACK_MODES = {
 };
 
 const $ = (id) => document.getElementById(id);
+// Endonym first, because someone looking for their own language scans for the
+// word they call it, not for the English name.
+const CAPTION_LANGUAGES = [
+  ['', 'Automatic — whatever the video offers'],
+  ['en', 'English'],
+  ['nl', 'Nederlands — Dutch'],
+  ['de', 'Deutsch — German'],
+  ['fr', 'Français — French'],
+  ['es', 'Español — Spanish'],
+  ['pt', 'Português — Portuguese'],
+  ['it', 'Italiano — Italian'],
+  ['pl', 'Polski — Polish'],
+  ['tr', 'Türkçe — Turkish'],
+  ['ru', 'Русский — Russian'],
+  ['uk', 'Українська — Ukrainian'],
+  ['sv', 'Svenska — Swedish'],
+  ['da', 'Dansk — Danish'],
+  ['no', 'Norsk — Norwegian'],
+  ['fi', 'Suomi — Finnish'],
+  ['cs', 'Čeština — Czech'],
+  ['el', 'Ελληνικά — Greek'],
+  ['he', 'עברית — Hebrew'],
+  ['ar', 'العربية — Arabic'],
+  ['hi', 'हिन्दी — Hindi'],
+  ['id', 'Bahasa Indonesia — Indonesian'],
+  ['vi', 'Tiếng Việt — Vietnamese'],
+  ['th', 'ไทย — Thai'],
+  ['ja', '日本語 — Japanese'],
+  ['ko', '한국어 — Korean'],
+  ['zh', '中文 — Chinese'],
+];
+
 const el = {
   providerList: $('providerList'),
   key: $('key'),
@@ -39,6 +73,9 @@ const el = {
   refreshModels: $('refreshModels'),
   modelMsg: $('modelMsg'),
   lang: $('lang'),
+  signInBlock: $('signInBlock'),
+  signInBtn: $('signInBtn'),
+  signInResult: $('signInResult'),
   defaultMode: $('defaultMode'),
   modeHint: $('modeHint'),
   maxTokens: $('maxTokens'),
@@ -48,6 +85,18 @@ const el = {
   wipeCancel: $('wipeCancel'),
   wipeMsg: $('wipeMsg'),
   saved: $('saved'),
+  stepProvider: $('stepProvider'),
+  stepKey: $('stepKey'),
+  stepModel: $('stepModel'),
+  providerState: $('providerState'),
+  keyState: $('keyState'),
+  tour: $('tour'),
+  tourStep: $('tourStep'),
+  tourTotal: $('tourTotal'),
+  tourTitle: $('tourTitle'),
+  tourBody: $('tourBody'),
+  tourSkip: $('tourSkip'),
+  tourNext: $('tourNext'),
 };
 
 let settings = { ...DEFAULTS };
@@ -119,9 +168,18 @@ async function load() {
   if (!PROVIDERS[settings.provider]) settings.provider = DEFAULTS.provider;
 }
 
+/**
+ * Write settings without saying anything. Everything the page does behind the
+ * user's back — persisting before asking the worker for models, stamping the
+ * onboarding flag — goes through this. Only an actual edit calls save().
+ */
+async function persist() {
+  await chrome.storage.local.set({ settings });
+}
+
 let savedTimer = null;
 async function save() {
-  await chrome.storage.local.set({ settings });
+  await persist();
   el.saved.textContent = 'Saved';
   el.saved.classList.add('show');
   clearTimeout(savedTimer);
@@ -170,7 +228,15 @@ function renderProviders() {
   }
 }
 
+/** Only OpenRouter can do this today, so the block is driven by the adapter. */
+function renderSignIn() {
+  const p = adapter();
+  el.signInBlock.hidden = !p.supportsSignIn;
+  if (p.supportsSignIn) el.signInBtn.textContent = `Sign in with ${p.label.split(' (')[0]}`;
+}
+
 function renderProviderFields() {
+  renderSignIn();
   const p = adapter();
   el.keyProviderName.textContent = p.label || settings.provider;
   el.key.value = settings.keys[settings.provider] || '';
@@ -198,6 +264,32 @@ function renderProviderFields() {
     node.textContent = settings.keys[id] ? 'key saved' : 'no key yet';
   }
   say(el.testResult, '');
+  updateSteps(false);
+}
+
+/** Short name for the pill — the parenthetical in the label is noise there. */
+function shortLabel(p, id) {
+  return (p.label || id).split(' (')[0];
+}
+
+/**
+ * The numbered rail is the page's map of "what still needs doing", so it has to
+ * follow the real state rather than be decoration.
+ */
+function updateSteps(testPassed) {
+  const p = adapter();
+  // A provider is always selected, so step one is only ever informational.
+  el.stepProvider.classList.add('done');
+  el.providerState.textContent = shortLabel(p, settings.provider);
+  el.providerState.className = 'state good';
+
+  const hasKey = !!(settings.keys[settings.provider] || '').trim();
+  el.stepKey.classList.toggle('done', hasKey);
+  el.keyState.textContent = testPassed ? 'tested, works' : (hasKey ? 'key saved' : 'no key yet');
+  el.keyState.className = 'state' + (hasKey ? ' good' : '');
+
+  // Only a step you can actually have reached: a model is meaningless without a key.
+  el.stepModel.classList.toggle('done', hasKey && !!(settings.model || p.defaultModel));
 }
 
 function providerNotes() {
@@ -236,8 +328,9 @@ async function refreshModels({ silent } = {}) {
   if (!silent) say(el.modelMsg, 'Loading models…', 'busy');
 
   // The worker reads settings from storage, never from the message, so what is
-  // on screen has to be persisted before asking.
-  await save();
+  // on screen has to be persisted before asking. Silently: init() calls this,
+  // and a page load is not an edit.
+  await persist();
   const res = await ask({ type: 'listModels' });
   if (res && res.ok && Array.isArray(res.models) && res.models.length) {
     renderModelOptions(res.models, selected);
@@ -255,6 +348,7 @@ async function refreshModels({ silent } = {}) {
     );
   }
   syncModelInputs(selected);
+  updateSteps();
 }
 
 function syncModelInputs(selected) {
@@ -323,6 +417,7 @@ function wire() {
     settings.keys[settings.provider] = el.key.value.trim();
     const notes = providerNotes();
     if (notes[settings.provider]) notes[settings.provider].textContent = settings.keys[settings.provider] ? 'key saved' : 'no key yet';
+    updateSteps(false);
     saveSoon();
   });
 
@@ -333,8 +428,25 @@ function wire() {
     el.toggleKey.setAttribute('aria-pressed', String(show));
   });
 
+  el.signInBtn.addEventListener('click', async () => {
+    el.signInBtn.disabled = true;
+    say(el.signInResult, 'Opening the sign-in window…', 'busy');
+    const res = await ask({ type: 'signIn' });
+    el.signInBtn.disabled = false;
+    if (res && res.ok) {
+      await load();          // the worker wrote the key; re-read rather than guess
+      renderProviders();
+      renderProviderFields();
+      fill();
+      say(el.signInResult, res.message || 'Signed in.', 'ok');
+      refreshModels({ silent: true });
+    } else {
+      say(el.signInResult, (res && res.message) || 'Sign-in did not complete.', res?.code === 'CANCELLED' ? 'warn' : 'err');
+    }
+  });
+
   el.testBtn.addEventListener('click', async () => {
-    await save();
+    await persist();
     el.testBtn.disabled = true;
     say(el.testResult, 'Testing…', 'busy');
     const res = await ask({ type: 'testKey' });
@@ -342,6 +454,7 @@ function wire() {
     if (res && res.ok) {
       const n = Array.isArray(res.models) ? res.models.length : null;
       say(el.testResult, res.message || res.note || (n !== null ? `Key works — ${n} models available.` : 'Key works.'), 'ok');
+      updateSteps(true);
     } else {
       say(el.testResult, (res && res.message) || 'The test failed and the worker gave no reason.', 'err');
     }
@@ -366,6 +479,7 @@ function wire() {
   el.model.addEventListener('change', () => {
     settings.model = el.model.value;
     el.modelCustom.value = '';
+    updateSteps();
     saveSoon();
   });
 
@@ -377,8 +491,8 @@ function wire() {
 
   el.refreshModels.addEventListener('click', () => refreshModels());
 
-  el.lang.addEventListener('input', () => {
-    settings.lang = el.lang.value.trim().toLowerCase();
+  el.lang.addEventListener('change', () => {
+    settings.lang = el.lang.value;
     saveSoon();
   });
 
@@ -425,6 +539,7 @@ function wire() {
     renderProviders();
     renderProviderFields();
     say(el.wipeMsg, 'Everything stored by this extension has been deleted.', 'ok');
+    endTour();
   });
 }
 
@@ -455,8 +570,19 @@ function showModeHint() {
   el.modeHint.textContent = modeHints[el.defaultMode.value] || '';
 }
 
+/** Built once. fill() runs on every save, and must not stack duplicates. */
+function renderLanguages() {
+  el.lang.textContent = '';
+  for (const [code, label] of CAPTION_LANGUAGES) el.lang.append(new Option(label, code));
+}
+
 function fill() {
-  el.lang.value = settings.lang;
+  // A stored code that is not on the list (set before this was a select, or by
+  // hand) still has to be selectable, or saving the page would silently change it.
+  if (settings.lang && !CAPTION_LANGUAGES.some(([code]) => code === settings.lang)) {
+    el.lang.append(new Option(`${settings.lang} — saved earlier`, settings.lang));
+  }
+  el.lang.value = settings.lang || '';
   el.maxTokens.value = settings.maxTokens;
   el.autoRun.checked = !!settings.autoRun;
   el.defaultMode.value = settings.defaultMode;
@@ -465,11 +591,120 @@ function fill() {
 async function init() {
   await load();
   renderProviders();
+  renderLanguages();
   await fillModes();
   fill();
   renderProviderFields();
   wire();
+  wireTour();
+  maybeStartTour();
   refreshModels({ silent: true });
+}
+
+/* ---------- first-visit walkthrough ---------- */
+
+/* Three coach marks, shown once. They ride on top of the page rather than in
+   front of it: no overlay, no focus trap, nothing disabled. Someone who ignores
+   them entirely can still use every control underneath. */
+const TOUR_STEPS = [
+  {
+    target: 'stepProvider',
+    title: 'Start by picking a provider',
+    body: 'Five to choose from. OpenRouter is the shortest route — it lets you sign in instead of pasting a key, and mints one for this extension itself.',
+  },
+  {
+    target: 'stepKey',
+    title: 'Add your key, then press Test',
+    body: 'Paste the key, or press "Sign in with OpenRouter" if you chose that. Then press "Test this key" — it tells you in plain words whether it worked.',
+  },
+  {
+    target: 'prefsCard',
+    title: 'The rest is optional',
+    body: 'Language, summary style, length and the rest all have working defaults. Change any of it now or later; nothing here is permanent.',
+  },
+];
+
+let tourIndex = -1;
+let tourTarget = null;
+
+function tourActive() {
+  return tourIndex >= 0;
+}
+
+function placeTour(node) {
+  el.tour.classList.toggle('floating', !node);
+  if (!node) return;
+  const rect = node.getBoundingClientRect();
+  // Document coordinates, so the card stays put while the page scrolls.
+  const top = rect.bottom + window.scrollY + 14;
+  const width = el.tour.offsetWidth || 340;
+  const maxLeft = Math.max(12, document.documentElement.clientWidth - width - 12);
+  const left = Math.min(Math.max(rect.left + window.scrollX, 12), maxLeft);
+  el.tour.style.setProperty('--tour-x', left + 'px');
+  el.tour.style.setProperty('--tour-y', top + 'px');
+}
+
+function showTourStep(i) {
+  const step = TOUR_STEPS[i];
+  if (!step) return endTour();
+  tourIndex = i;
+
+  if (tourTarget) tourTarget.classList.remove('tour-target');
+  // A missing or hidden target must not stop the walkthrough; it just loses its
+  // anchor and docks at the bottom of the window instead.
+  const node = $(step.target);
+  tourTarget = node && !node.hidden ? node : null;
+  if (tourTarget) tourTarget.classList.add('tour-target');
+
+  el.tourStep.textContent = String(i + 1);
+  el.tourTotal.textContent = String(TOUR_STEPS.length);
+  el.tourTitle.textContent = step.title;
+  el.tourBody.textContent = step.body;
+  el.tourNext.textContent = i === TOUR_STEPS.length - 1 ? 'Done' : 'Next';
+  el.tour.hidden = false;
+
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (tourTarget) tourTarget.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
+  placeTour(tourTarget);
+  el.tour.focus();
+}
+
+function endTour() {
+  if (!tourActive()) return;
+  tourIndex = -1;
+  if (tourTarget) tourTarget.classList.remove('tour-target');
+  const returnTo = tourTarget;
+  tourTarget = null;
+  el.tour.hidden = true;
+  // Focus was inside the card that just vanished; hand it back to the page.
+  if (returnTo) {
+    const focusable = returnTo.querySelector('input, select, button, a[href], summary');
+    if (focusable) focusable.focus();
+  }
+  if (!settings.onboardingDone) {
+    settings.onboardingDone = true;
+    persist();   // silent: finishing the tour is not an edit the user made
+  }
+}
+
+function wireTour() {
+  el.tourNext.addEventListener('click', () => showTourStep(tourIndex + 1));
+  el.tourSkip.addEventListener('click', endTour);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && tourActive()) {
+      e.preventDefault();
+      endTour();
+    }
+  });
+  window.addEventListener('resize', () => { if (tourActive()) placeTour(tourTarget); });
+}
+
+/** First visit, unless ?tour= says otherwise (1 forces it, 0 suppresses it). */
+function maybeStartTour() {
+  const forced = new URLSearchParams(location.search).get('tour');
+  if (forced === '0') return;
+  if (forced !== '1' && settings.onboardingDone) return;
+  showTourStep(0);
 }
 
 init();

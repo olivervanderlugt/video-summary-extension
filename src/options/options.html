@@ -10,118 +10,194 @@
 <main class="page">
 
   <header class="head">
-    <h1>Video Summary</h1>
-    <p class="sub">Summarise YouTube videos with your own AI provider key. Nothing here leaves your browser except the requests you send to that provider.</p>
+    <p class="eyebrow">Video Summary <span class="eyebrow-sep">/</span> settings</p>
+    <h1>Summarise YouTube videos with <span class="mark">your own key</span>.</h1>
+    <p class="sub">Nothing here leaves your browser except the requests you send to the provider you pick.</p>
+    <p class="reassure">
+      <span class="reassure-icon" aria-hidden="true">↺</span>
+      <span>Nothing here is permanent. Every preference can be changed later, and each provider keeps its own key — switching provider does not lose the key you already entered for another.</span>
+    </p>
   </header>
 
-  <!-- Provider -->
-  <section class="card">
-    <h2>Provider</h2>
-    <fieldset class="providers">
-      <legend class="sr-only">Choose an AI provider</legend>
-      <div id="providerList" class="provider-list"></div>
-    </fieldset>
-  </section>
+  <div class="columns">
 
-  <!-- Key -->
-  <section class="card">
-    <h2>API key</h2>
-    <label class="lbl" for="key">Key for <span id="keyProviderName">this provider</span></label>
-    <div class="row">
-      <input id="key" type="password" class="grow" autocomplete="off" spellcheck="false" placeholder="">
-      <button id="toggleKey" type="button" class="btn ghost" aria-pressed="false">Show</button>
+    <!-- ===== Setup path ===== -->
+    <div class="col col-setup">
+      <h2 class="col-head">Set up <span class="col-note">needed before anything works</span></h2>
+
+      <ol class="steps">
+
+        <!-- Provider -->
+        <li class="step" id="stepProvider">
+          <span class="step-num" aria-hidden="true">1</span>
+          <div class="card step-body">
+            <div class="card-head">
+              <h3>Provider</h3>
+              <p class="state" id="providerState">not chosen</p>
+            </div>
+            <fieldset class="providers">
+              <legend class="sr-only">Choose an AI provider</legend>
+              <div id="providerList" class="provider-list"></div>
+            </fieldset>
+          </div>
+        </li>
+
+        <!-- Key -->
+        <li class="step" id="stepKey">
+          <span class="step-num" aria-hidden="true">2</span>
+          <div class="card step-body">
+            <div class="card-head">
+              <h3>API key</h3>
+              <p class="state" id="keyState">no key yet</p>
+            </div>
+
+            <div id="signInBlock" hidden>
+              <p class="hint">
+                This provider lets you sign in instead of copying a key. It mints one for
+                this extension and stores it locally, the same as a pasted key.
+              </p>
+              <div class="row">
+                <button id="signInBtn" type="button" class="btn primary">Sign in with OpenRouter</button>
+                <p id="signInResult" class="result" role="status" aria-live="polite"></p>
+              </div>
+              <p class="hint dim">Anthropic and OpenAI do not offer this — Anthropic prohibits third-party sign-in and OpenAI has no endpoint that issues a key for your account. For those, paste a key below.</p>
+              <hr class="rule">
+            </div>
+
+            <label class="lbl" for="key">Key for <span id="keyProviderName">this provider</span></label>
+            <div class="row">
+              <input id="key" type="password" class="grow mono" autocomplete="off" spellcheck="false" placeholder="">
+              <button id="toggleKey" type="button" class="btn ghost" aria-pressed="false">Show</button>
+            </div>
+            <p class="hint">
+              <a id="keysLink" href="#" target="_blank" rel="noreferrer noopener">Where to get a key</a>
+              <span class="dim">keys are stored separately per provider, so switching providers does not lose them.</span>
+            </p>
+
+            <div class="test">
+              <button id="testBtn" type="button" class="btn primary">Test this key</button>
+              <p id="testResult" class="result" role="status" aria-live="polite"></p>
+            </div>
+          </div>
+        </li>
+
+        <!-- Base URL (compatible only) -->
+        <li class="step" id="baseUrlSection" hidden>
+          <span class="step-num step-num-alt" aria-hidden="true">↳</span>
+          <div class="card step-body">
+            <div class="card-head">
+              <h3>Server URL</h3>
+            </div>
+            <label class="lbl" for="baseUrl">Base URL of the OpenAI-compatible server</label>
+            <input id="baseUrl" type="url" class="grow mono" autocomplete="off" spellcheck="false" placeholder="http://localhost:11434/v1">
+            <p class="hint">The extension appends the usual OpenAI paths (<code>/chat/completions</code>, <code>/models</code>) to this.</p>
+            <p id="baseUrlMsg" class="result" role="status" aria-live="polite"></p>
+            <button id="grantBtn" type="button" class="btn" hidden>Grant access to this server</button>
+          </div>
+        </li>
+
+        <!-- Model -->
+        <li class="step" id="stepModel">
+          <span class="step-num" aria-hidden="true">3</span>
+          <div class="card step-body">
+            <div class="card-head">
+              <h3>Model</h3>
+            </div>
+            <label class="lbl" for="model">Pick from the provider's live model list</label>
+            <div class="row">
+              <select id="model" class="grow mono"></select>
+              <button id="refreshModels" type="button" class="btn ghost">Refresh</button>
+            </div>
+            <p id="modelMsg" class="result" role="status" aria-live="polite"></p>
+
+            <label class="lbl" for="modelCustom">Or type a model name the list does not have</label>
+            <input id="modelCustom" type="text" class="grow mono" autocomplete="off" spellcheck="false" placeholder="exact model id">
+          </div>
+        </li>
+
+      </ol>
     </div>
-    <p class="hint">
-      <a id="keysLink" href="#" target="_blank" rel="noreferrer noopener">Where to get a key</a>
-      <span class="dim"> — keys are stored separately per provider, so switching providers does not lose them.</span>
-    </p>
 
-    <div class="test">
-      <button id="testBtn" type="button" class="btn primary">Test this key</button>
-      <p id="testResult" class="result" role="status" aria-live="polite"></p>
+    <!-- ===== Optional ===== -->
+    <div class="col col-rest">
+      <h2 class="col-head">The rest <span class="col-note">optional, change it any time</span></h2>
+
+      <!-- Preferences -->
+      <section class="card" id="prefsCard">
+        <div class="card-head"><h3>Preferences</h3></div>
+
+        <div class="field">
+          <label class="lbl" for="lang">Preferred caption language</label>
+          <select id="lang" class="short"></select>
+          <p class="hint">Used when a video offers several caption tracks; ignored when it offers only one. The summary follows the transcript, so this also decides which language you get back.</p>
+        </div>
+
+        <div class="field">
+          <label class="lbl" for="defaultMode">Default summary style</label>
+          <select id="defaultMode" class="short"></select>
+          <p id="modeHint" class="hint"></p>
+        </div>
+
+        <div class="field">
+          <label class="lbl" for="maxTokens">Maximum output length (tokens)</label>
+          <input id="maxTokens" type="number" class="short" min="256" max="32000" step="256">
+          <p class="hint">A ceiling, not a target — the answer stops here rather than aiming for it. As a rough guide, 1000 tokens is somewhere around 700–800 words of English; that ratio comes from English on OpenAI's tokenizer and does not carry over. Most other languages spend more tokens per word, so the same cap buys noticeably fewer words — sometimes less than half. Longer answers cost more.</p>
+        </div>
+
+        <div class="field check">
+          <div class="row tight">
+            <input id="autoRun" type="checkbox">
+            <label class="lbl inline" for="autoRun">Automatically summarise when I open a video</label>
+          </div>
+          <p class="hint warn"><span class="warn-icon" aria-hidden="true">!</span> Off by default on purpose. With this on, every watch page you open spends your provider credit without asking — including videos you close after five seconds.</p>
+        </div>
+      </section>
+
+      <!-- Security -->
+      <details class="card security" id="securityCard">
+        <summary class="security-summary">
+          <span class="security-summary-text">Where your key lives, and what leaves your browser</span>
+          <span class="security-chevron" aria-hidden="true"></span>
+        </summary>
+        <div class="security-body">
+          <p>Your key is kept in <code>chrome.storage.local</code>, unencrypted. Anyone with access to your Chrome profile directory can read it — the same way they could read the passwords Chrome has saved for you. Encrypting it here would mean storing the passphrase next to the ciphertext, which protects nobody, so this extension does not pretend to.</p>
+          <p>It is never written to <code>chrome.storage.sync</code>, so it is never uploaded to your Google account or copied to your other machines.</p>
+          <p>The key is read only by the extension's background service worker, which is where every provider request is made. It is never handed to the YouTube page or the content script, so scripts running on youtube.com cannot see it.</p>
+          <p>The only outbound requests this extension makes are to the provider you configured above. There is no server of ours, no analytics, and no telemetry of any kind.</p>
+          <p>What gets sent to that provider, each time you summarise: the video's title, channel, duration, chapter titles, and the text of its captions. Once sent, that data is governed by your provider's data-retention policy, not by anything this extension does.</p>
+          <p>Worth doing: mint a key used only by this extension, and set a spend limit on it. Then a leak costs a capped amount and is fixed by revoking one key.</p>
+        </div>
+      </details>
+
+      <!-- Data -->
+      <section class="card danger-card">
+        <div class="card-head"><h3>Stored data</h3></div>
+        <p class="hint">Removes your keys and every setting from this browser. The extension stays installed.</p>
+        <div class="row tight">
+          <button id="wipeBtn" type="button" class="btn danger">Delete all stored data</button>
+          <button id="wipeConfirm" type="button" class="btn danger solid" hidden>Yes, delete everything</button>
+          <button id="wipeCancel" type="button" class="btn ghost" hidden>Cancel</button>
+        </div>
+        <p id="wipeMsg" class="result" role="status" aria-live="polite"></p>
+      </section>
     </div>
-  </section>
 
-  <!-- Base URL (compatible only) -->
-  <section class="card" id="baseUrlSection" hidden>
-    <h2>Server URL</h2>
-    <label class="lbl" for="baseUrl">Base URL of the OpenAI-compatible server</label>
-    <input id="baseUrl" type="url" class="grow" autocomplete="off" spellcheck="false" placeholder="http://localhost:11434/v1">
-    <p class="hint">The extension appends the usual OpenAI paths (<code>/chat/completions</code>, <code>/models</code>) to this.</p>
-    <p id="baseUrlMsg" class="result" role="status" aria-live="polite"></p>
-    <button id="grantBtn" type="button" class="btn" hidden>Grant access to this server</button>
-  </section>
-
-  <!-- Model -->
-  <section class="card">
-    <h2>Model</h2>
-    <label class="lbl" for="model">Pick from the provider's live model list</label>
-    <div class="row">
-      <select id="model" class="grow"></select>
-      <button id="refreshModels" type="button" class="btn ghost">Refresh</button>
-    </div>
-    <p id="modelMsg" class="result" role="status" aria-live="polite"></p>
-
-    <label class="lbl" for="modelCustom">Or type a model name the list does not have</label>
-    <input id="modelCustom" type="text" class="grow" autocomplete="off" spellcheck="false" placeholder="exact model id">
-  </section>
-
-  <!-- Preferences -->
-  <section class="card">
-    <h2>Preferences</h2>
-
-    <div class="field">
-      <label class="lbl" for="lang">Preferred caption language</label>
-      <input id="lang" type="text" class="short" autocomplete="off" spellcheck="false" placeholder="en">
-      <p class="hint">A language code such as <code>en</code>, <code>nl</code>, <code>de</code>. Used when a video offers several caption tracks; ignored when it offers one.</p>
-    </div>
-
-    <div class="field">
-      <label class="lbl" for="defaultMode">Default summary style</label>
-      <select id="defaultMode" class="short"></select>
-      <p id="modeHint" class="hint"></p>
-    </div>
-
-    <div class="field">
-      <label class="lbl" for="maxTokens">Maximum output length (tokens)</label>
-      <input id="maxTokens" type="number" class="short" min="256" max="32000" step="256">
-      <p class="hint">Roughly 750 words per 1000 tokens. Longer answers cost more.</p>
-    </div>
-
-    <div class="field check">
-      <div class="row tight">
-        <input id="autoRun" type="checkbox">
-        <label class="lbl inline" for="autoRun">Automatically summarise when I open a video</label>
-      </div>
-      <p class="hint warn">Off by default on purpose. With this on, every watch page you open spends your provider credit without asking — including videos you close after five seconds.</p>
-    </div>
-  </section>
-
-  <!-- Security -->
-  <section class="card security">
-    <h2>Where your key lives</h2>
-    <p>Your key is kept in <code>chrome.storage.local</code>, unencrypted. Anyone with access to your Chrome profile directory can read it — the same way they could read the passwords Chrome has saved for you. Encrypting it here would mean storing the passphrase next to the ciphertext, which protects nobody, so this extension does not pretend to.</p>
-    <p>It is never written to <code>chrome.storage.sync</code>, so it is never uploaded to your Google account or copied to your other machines.</p>
-    <p>The key is read only by the extension's background service worker, which is where every provider request is made. It is never handed to the YouTube page or the content script, so scripts running on youtube.com cannot see it.</p>
-    <p>The only outbound requests this extension makes are to the provider you configured above. There is no server of ours, no analytics, and no telemetry of any kind.</p>
-    <p>What gets sent to that provider, each time you summarise: the video's title, channel, duration, chapter titles, and the text of its captions. Once sent, that data is governed by your provider's data-retention policy, not by anything this extension does.</p>
-    <p>Worth doing: mint a key used only by this extension, and set a spend limit on it. Then a leak costs a capped amount and is fixed by revoking one key.</p>
-  </section>
-
-  <!-- Data -->
-  <section class="card">
-    <h2>Stored data</h2>
-    <p class="hint">Removes your keys and every setting from this browser. The extension stays installed.</p>
-    <div class="row tight">
-      <button id="wipeBtn" type="button" class="btn danger">Delete all stored data</button>
-      <button id="wipeConfirm" type="button" class="btn danger solid" hidden>Yes, delete everything</button>
-      <button id="wipeCancel" type="button" class="btn ghost" hidden>Cancel</button>
-    </div>
-    <p id="wipeMsg" class="result" role="status" aria-live="polite"></p>
-  </section>
+  </div>
 
   <p id="saved" class="saved" role="status" aria-live="polite"></p>
 </main>
+
+<!-- First-visit walkthrough. Hidden until options.js opens it; harmless if it never does. -->
+<div id="tour" class="tour" role="dialog" tabindex="-1" aria-modal="false" aria-labelledby="tourTitle" aria-describedby="tourBody" hidden>
+  <p class="tour-count"><span id="tourStep">1</span> of <span id="tourTotal">3</span></p>
+  <h2 class="tour-title" id="tourTitle"></h2>
+  <p class="tour-body" id="tourBody"></p>
+  <div class="tour-actions">
+    <button id="tourSkip" type="button" class="btn ghost small">Skip</button>
+    <button id="tourNext" type="button" class="btn primary small">Next</button>
+  </div>
+</div>
+
 <script type="module" src="options.js"></script>
 </body>
 </html>

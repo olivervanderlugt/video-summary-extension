@@ -15,7 +15,29 @@ const compatible = {
   keyPlaceholder: 'API key (leave blank for a local server)',
 };
 
-export const PROVIDERS = { anthropic, openai, gemini, compatible };
+// Also the openai wire format, but first-class rather than "custom URL": it is
+// the only provider of the four that offers a real sign-in, so it should not be
+// buried behind a field asking for a base URL.
+const openrouter = {
+  ...openai,
+  id: 'openrouter',
+  label: 'OpenRouter (sign in — no key to copy)',
+  origin: 'https://openrouter.ai/*',
+  requiresBaseUrl: false,
+  fixedBaseUrl: 'https://openrouter.ai/api/v1',
+  supportsSignIn: true,
+  defaultModel: 'anthropic/claude-sonnet-5',
+  fallbackModels: [
+    'anthropic/claude-opus-5',
+    'anthropic/claude-sonnet-5',
+    'openai/gpt-5',
+    'google/gemini-2.5-flash',
+  ],
+  keysUrl: 'https://openrouter.ai/keys',
+  keyPlaceholder: 'sk-or-... (or just press Sign in)',
+};
+
+export const PROVIDERS = { anthropic, openai, gemini, openrouter, compatible };
 
 export function getProvider(id) {
   const provider = PROVIDERS[id];

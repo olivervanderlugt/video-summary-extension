@@ -145,3 +145,23 @@ test('prompts survive missing fields', () => {
   assert.doesNotThrow(() => buildReducePrompt());
   assert.doesNotThrow(() => buildQuestionPrompt());
 });
+
+test('the caption language is an instruction, not just a label', () => {
+  // The settings page tells the user this choice decides the summary language.
+  const prompt = buildSummaryPrompt({
+    meta: { title: 'T', channel: 'C', duration: 60, lang: 'nl' },
+    transcriptText: 'hallo',
+    mode: 'detailed',
+  });
+  assert.match(prompt, /Caption language: nl/);
+  assert.match(prompt, /Write the summary in this language/);
+});
+
+test('no language claim is made when the track language is unknown', () => {
+  const prompt = buildSummaryPrompt({
+    meta: { title: 'T', channel: 'C', duration: 60 },
+    transcriptText: 'hello',
+    mode: 'detailed',
+  });
+  assert.ok(!/Write the summary in this language/.test(prompt));
+});

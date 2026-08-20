@@ -100,7 +100,14 @@ function metaBlock(meta = {}) {
   if (meta.title) lines.push(`Title: ${clean(meta.title)}`);
   if (meta.channel) lines.push(`Channel: ${clean(meta.channel)}`);
   if (Number(meta.duration) > 0) lines.push(`Duration: ${formatTimestamp(meta.duration)}`);
-  if (meta.lang) lines.push(`Caption language: ${clean(meta.lang)}`);
+  if (meta.lang) {
+    // Not decoration: the settings page promises that choosing a caption
+    // language decides what language the summary comes back in, and nothing
+    // else in the prompt made that true.
+    lines.push(
+      `Caption language: ${clean(meta.lang)}. Write the summary in this language, whatever language these instructions are in.`
+    );
+  }
   lines.push(
     meta.isAuto
       ? 'Captions: auto-generated — expect misheard names, jargon and punctuation.'
