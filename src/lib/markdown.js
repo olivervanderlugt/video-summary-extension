@@ -148,3 +148,37 @@ export function linkifyTimestamps(html) {
       : m;
   });
 }
+
+/**
+ * Collapse one rendered section behind a disclosure.
+ *
+ * Used by the detailed mode, where the TL;DR is the answer and the bullets are
+ * the supporting detail — worth having, not worth pushing the answer off the
+ * screen. Operates on our own rendered output, never on model text: every tag
+ * it moves was emitted by renderMarkdown above, and the heading is matched
+ * escaped, so nothing here can introduce markup that escaping did not already
+ * clear.
+ *
+ * Tolerates a half-streamed document: while the section is still arriving it
+ * folds whatever has arrived so far.
+ *
+ * @param {string} html output of renderMarkdown
+ * @param {string} heading the h2 text to fold, e.g. 'Key points'
+ */
+export function foldSection(html, heading) {
+  const open = `<h2>${escapeHtml(heading)}</h2>`;
+  const at = String(html == null ? '' : html).indexOf(open);
+  if (at === -1) return html;
+
+  const bodyFrom = at + open.length;
+  const nextHeading = html.indexOf('<h2>', bodyFrom);
+  const end = nextHeading === -1 ? html.length : nextHeading;
+  const body = html.slice(bodyFrom, end).trim();
+  if (!body) return html; // nothing to fold yet
+
+  return (
+    html.slice(0, at) +
+    `<details class="vse-fold"><summary>${escapeHtml(heading)}</summary>${body}</details>` +
+    html.slice(end)
+  );
+}

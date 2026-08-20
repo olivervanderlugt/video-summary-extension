@@ -16,7 +16,7 @@ import {
   buildReducePrompt,
   buildQuestionPrompt,
 } from '../lib/prompt.js';
-import { renderMarkdown, linkifyTimestamps } from '../lib/markdown.js';
+import { renderMarkdown, linkifyTimestamps, foldSection } from '../lib/markdown.js';
 import { createVerifier, challengeFor, authUrl, codeFromRedirect } from '../lib/pkce.js';
 
 const DEFAULTS = {
@@ -189,6 +189,17 @@ class Session {
     this.renderTimer = null;
   }
 
+  /**
+   * Buffered markdown as the panel will show it. In detailed mode the bullets
+   * are folded away: the TL;DR is the answer, and the points are there for
+   * anyone who wants to check it rather than something that should push the
+   * answer off the screen.
+   */
+  html() {
+    const rendered = linkifyTimestamps(renderMarkdown(this.buffer));
+    return this.mode === 'detailed' ? foldSection(rendered, 'Key points') : rendered;
+  }
+
   post(msg) {
     try {
       this.port.postMessage(msg);
@@ -219,7 +230,7 @@ class Session {
     this.post({
       type: 'render',
       text: this.buffer,
-      html: linkifyTimestamps(renderMarkdown(this.buffer)),
+      html: this.html(),
     });
   }
 
@@ -336,6 +347,9 @@ class Session {
       this.meta = meta;
       const system = buildSystemPrompt();
       const useMode = mode || settings.defaultMode;
+      // Remembered so html() can fold the right section, and so an Ask answer
+      // rendered later is not folded as though it were a summary.
+      this.mode = useMode;
 
       let final;
       if (this.transcriptText.length <= SINGLE_PASS_CHARS) {
@@ -369,12 +383,12 @@ class Session {
       this.post({
         type: 'done',
         text: this.buffer,
-        html: linkifyTimestamps(renderMarkdown(this.buffer)),
+        html: this.html(),
       });
     } catch (err) {
       const { code, message } = toUserError(err);
       if (code !== 'CANCELLED') this.post({ type: 'error', code, message });
-      else this.post({ type: 'done', text: this.buffer, html: linkifyTimestamps(renderMarkdown(this.buffer)), cancelled: true });
+      else this.post({ type: 'done', text: this.buffer, html: this.html(), cancelled: true });
     } finally {
       this.controller = null;
       this.stopKeepalive();
@@ -446,6 +460,7 @@ class Session {
     const controller = new AbortController();
     this.controller = controller;
     this.buffer = '';
+    this.mode = null; // an answer is prose, never a folded summary
     this.startKeepalive();
 
     try {
@@ -476,7 +491,7 @@ class Session {
       this.post({
         type: 'done',
         text: this.buffer,
-        html: linkifyTimestamps(renderMarkdown(this.buffer)),
+        html: this.html(),
         answer: this.buffer,
       });
     } catch (err) {

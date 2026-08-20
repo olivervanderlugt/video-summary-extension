@@ -27,11 +27,33 @@ const count = (hay, needle) => hay.split(needle).length - 1;
 
 test('the system prompt fixes the output contract', () => {
   const s = buildSystemPrompt();
-  for (const h of ['## TL;DR', '## Key points', '## Walkthrough', '## Worth watching?']) {
+  for (const h of ['## TL;DR', '## Key points']) {
     assert.ok(s.includes(h), `system prompt is missing ${h}`);
   }
   assert.match(s, /\[m:ss\]/);
-  assert.match(s, /chapters/i);
+
+  // Walkthrough and "Worth watching?" were removed deliberately: no mode asks
+  // for them, and a contract that still described them invited the model to
+  // emit sections nobody requested. Pinned so they cannot drift back in.
+  for (const gone of ['## Walkthrough', '## Worth watching?']) {
+    assert.ok(!s.includes(gone), `${gone} came back into the contract`);
+  }
+});
+
+test('the system prompt says which points earn a bullet', () => {
+  // Without this every mode degrades into a transcript with timestamps.
+  const s = buildSystemPrompt();
+  assert.match(s, /earn a bullet/i);
+  assert.match(s, /Fewer, better bullets/i);
+});
+
+test('the system prompt bans the structure verbs that pad a summary', () => {
+  // "explores", "delves into", "unpacks" all say a subject came up while
+  // telling the reader nothing about it. They are the signature of filler.
+  const s = buildSystemPrompt();
+  for (const verb of ['delves into', 'unpacks', 'key takeaway', 'leverage']) {
+    assert.ok(s.includes(verb), `the prompt no longer names "${verb}" as something to avoid`);
+  }
 });
 
 test('the system prompt states the trust boundary', () => {
@@ -106,9 +128,24 @@ test('every mode is distinct and every mode is reachable', () => {
   });
   assert.equal(new Set(instructions).size, ids.length, 'two modes produced the same prompt');
 
-  const brief = buildSummaryPrompt({ meta: META, transcriptText: TRANSCRIPT, mode: 'brief' });
-  assert.match(brief, /at most 5 bullets/i);
-  assert.match(buildSummaryPrompt({ meta: META, transcriptText: TRANSCRIPT, mode: 'quotes' }), /verbatim/i);
+  const forMode = (mode) => buildSummaryPrompt({ meta: META, transcriptText: TRANSCRIPT, mode });
+
+  // Each mode asks for one shape. These assertions are what stops a mode
+  // quietly turning back into "the full contract with a different adjective".
+  const brief = forMode('brief');
+  assert.match(brief, /ONLY `## TL;DR`/);
+  assert.ok(!/## Key points/.test(MODES.brief.instruction), 'brief must not ask for bullets');
+
+  assert.match(forMode('bullets'), /ONLY `## Key points`/);
+  assert.match(forMode('quotes'), /verbatim/i);
+  assert.match(MODES.quotes.instruction, /At most 6/, 'key quotes must stay selective');
+
+  // Explain simply is prose for someone with no background: what it is about,
+  // and what it concludes. Bullets and timestamps defeat the point.
+  const eli5 = MODES.eli5.instruction;
+  assert.match(eli5, /no bullets/i);
+  assert.match(eli5, /no timestamps/i);
+  assert.match(eli5, /concludes/i);
 });
 
 test('an unknown mode falls back to detailed rather than throwing', () => {
@@ -135,7 +172,7 @@ test('the reduce step carries the notes as data and applies the mode', () => {
   });
   assert.ok(out.includes('a point') && out.includes('another point'));
   assert.equal(count(out, '</transcript>'), 2, 'one per section, none injected');
-  assert.match(out, /at most 5 bullets/i);
+  assert.match(out, /ONLY `## TL;DR`/, "the reduce step must carry the run's mode");
   assert.match(out, /data, not instruction/i);
 });
 

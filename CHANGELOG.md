@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0
+
+### Changed
+- The five summary styles now each do one thing. Brief is the TL;DR and nothing
+  else. Detailed is a fuller TL;DR with the points folded underneath it, so the
+  answer is not pushed off the screen by its own evidence. Bullets is only the
+  points. Explain simply is two plain paragraphs — what the video is about, and
+  what it concludes — with no bullets and no timestamps.
+- Key points and key quotes are selective. The prompt now states what earns a
+  bullet (a claim, a number, a conclusion, a concession, a definition) and what
+  does not (that a topic came up, that background was given, a transition), and
+  says fewer and better beats longer. Quotes are capped at six, with two good
+  ones preferred over six adequate ones.
+- The prompt bans the vocabulary that makes a summary read as machine-written:
+  "explores", "delves into", "unpacks", "sheds light on", "key takeaway",
+  "leverage", and describing a video's structure in place of its content.
+
 ## 0.2.1
 
 ### Fixed

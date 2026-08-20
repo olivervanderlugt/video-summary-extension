@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderMarkdown, linkifyTimestamps } from '../src/lib/markdown.js';
+import { renderMarkdown, linkifyTimestamps, foldSection } from '../src/lib/markdown.js';
 
 const PAIRED = ['p', 'ul', 'ol', 'li', 'h2', 'h3', 'strong', 'em', 'code', 'button'];
 
@@ -134,4 +134,32 @@ test('a paragraph after a blank line still ends the list', () => {
   const html = renderMarkdown('- one\n- two\n\nA new paragraph.');
   assert.match(html, /<\/ul>/);
   assert.match(html, /<p>A new paragraph\.<\/p>/);
+});
+
+test('detailed mode folds its bullets behind a disclosure', () => {
+  // The TL;DR is the answer; the points are there to check it against, and
+  // should not push the answer off the screen.
+  const html = renderMarkdown('## TL;DR\nThe answer.\n\n## Key points\n- [0:04] one');
+  const folded = foldSection(html, 'Key points');
+  assert.match(folded, /<details class="vse-fold"><summary>Key points<\/summary>/);
+  assert.ok(!/<h2>Key points<\/h2>/.test(folded), 'the heading became the summary');
+  assert.ok(folded.includes('<h2>TL;DR</h2>'), 'the answer stays unfolded');
+});
+
+test('folding tolerates a half-streamed document', () => {
+  // It runs on every streamed token, so it must never throw or half-wrap.
+  const partial = renderMarkdown('## TL;DR\nThe ans');
+  assert.equal(foldSection(partial, 'Key points'), partial, 'nothing to fold yet');
+  for (const md of ['## Key points', '## Key points\n', '## Key points\n- [0:0']) {
+    assert.doesNotThrow(() => foldSection(renderMarkdown(md), 'Key points'));
+  }
+});
+
+test('folding cannot introduce markup', () => {
+  // It operates on our own rendered output; a heading forged in the transcript
+  // is already escaped by the time it gets here.
+  const html = renderMarkdown('## Key points\n- <img src=x onerror=alert(1)>');
+  const folded = foldSection(html, 'Key points');
+  assert.ok(!/<img/.test(folded));
+  assert.match(folded, /&lt;img/);
 });

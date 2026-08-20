@@ -7,29 +7,28 @@
 
 import { parseJson3, pickTrack, cuesToText } from '/src/lib/transcript.js';
 import { buildSystemPrompt, buildSummaryPrompt, buildQuestionPrompt } from '/src/lib/prompt.js';
-import { renderMarkdown, linkifyTimestamps } from '/src/lib/markdown.js';
+import { renderMarkdown, linkifyTimestamps, foldSection } from '/src/lib/markdown.js';
+
+// Mirrors worker.js html(): detailed folds Key points.
+const paint = (md, mode) => {
+  const html = linkifyTimestamps(renderMarkdown(md));
+  return mode === 'detailed' ? foldSection(html, 'Key points') : html;
+};
 
 const SUMMARY = `## TL;DR
-Neural networks are layered functions that learn their weights from data. This
-first chapter builds the intuition with a handwritten-digit classifier, showing
-what a "neuron" and a "layer" actually are before any calculus appears.
+A neural network is a function with tunable weights, and this chapter builds the
+intuition for one by classifying handwritten digits. A neuron holds a single
+number between 0 and 1; a layer is a column of them; the weights decide which
+pattern each neuron responds to and the bias decides how much evidence it needs
+before firing. The digit classifier shown has 13,002 of those numbers, and
+training means adjusting them. The chapter stops before any calculus: it argues
+that the structure has to make sense before the optimisation does.
 
 ## Key points
 - [0:04] A neuron holds one number between 0 and 1, its **activation**.
 - [0:12] The 784 input neurons are the pixels of a 28x28 image, flattened.
-- [0:20] Weights decide which pattern a neuron looks for; the bias decides how
-  much evidence it needs before firing.
-- [0:32] The whole network is one function with 13,002 knobs, and learning means
-  turning them.
-
-## Walkthrough
-- [0:00] Why digit recognition is the right first problem.
-- [0:16] Layers, and what the hidden ones might be picking out.
-- [0:28] Matrix notation, and why it collapses the whole thing to one line.
-
-## Worth watching?
-Worth it if you want intuition before formalism. Skip it if you already know
-what a weight matrix is — the TL;DR above is enough.`;
+- [0:20] Weights select a pattern; the bias sets how much evidence fires it.
+- [0:32] The network is one function with 13,002 tunable numbers.`;
 
 const ANSWER = `Yes — [0:12] is the moment that matters. The input layer is the
 image itself: one neuron per pixel, 784 of them, each holding that pixel's
@@ -60,7 +59,7 @@ function makePort(onToPage) {
       c.port2.postMessage(0);
     });
 
-  async function stream(markdown) {
+  async function stream(markdown, mode) {
     cancelled = false;
     let buffer = '';
     // window.__harnessPace (ms) slows the stream down so a test can click Stop
@@ -72,7 +71,7 @@ function makePort(onToPage) {
     for (let i = 0; i < markdown.length; i += size) {
       if (cancelled) return null;
       buffer += markdown.slice(i, i + size);
-      post({ type: 'render', text: buffer, html: linkifyTimestamps(renderMarkdown(buffer)) });
+      post({ type: 'render', text: buffer, html: paint(buffer, mode) });
       if (pace) await new Promise((r) => setTimeout(r, pace));
       else await tick();
     }
@@ -129,9 +128,9 @@ function makePort(onToPage) {
       }
 
       post({ type: 'status', stage: 'summarizing' });
-      const text = await stream(SUMMARY);
+      const text = await stream(SUMMARY, msg.mode);
       if (text === null) return; // cancelled
-      post({ type: 'done', text, html: linkifyTimestamps(renderMarkdown(text)) });
+      post({ type: 'done', text, html: paint(text, msg.mode) });
       return;
     }
 
