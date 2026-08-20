@@ -489,15 +489,21 @@
    * without the player ever being touched.
    */
   function watchForPot() {
+    // XHR only. The player was measured using XMLHttpRequest for its caption
+    // request, and wrapping window.fetch as well cost far more than it bought:
+    // any YouTube code calling fetch unbound (`const f = window.fetch; f(url)`)
+    // lands in the wrapper with `this === undefined`, and applying the native
+    // fetch to that throws "Illegal invocation" — breaking YouTube's own
+    // requests, not ours. This runs on someone else's page; the smallest patch
+    // that works is the only acceptable one.
     const nativeOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function (method, url) {
-      rememberPot(url);
+      try {
+        rememberPot(url);
+      } catch {
+        // Never let our bookkeeping break the page's own request.
+      }
       return nativeOpen.apply(this, arguments);
-    };
-    const nativeFetch = window.fetch;
-    window.fetch = function (input) {
-      rememberPot(typeof input === 'string' ? input : input && input.url);
-      return nativeFetch.apply(this, arguments);
     };
   }
 
@@ -511,6 +517,17 @@
     if (potParams) return potParams;
     const player = document.getElementById('movie_player');
     if (!player || typeof player.getOption !== 'function') return null;
+
+    // Measured: the player only requests a caption track while it is playing.
+    // Paused, it will never issue the request no matter how long we wait, and
+    // waiting is worse than useless — it sits in front of the spinner before
+    // the fallbacks even start. We will not start playback to get a token:
+    // this is the viewer's video, not ours.
+    try {
+      if (player.getPlayerState && player.getPlayerState() !== 1) return null;
+    } catch {
+      return null;
+    }
 
     let previous;
     try {
@@ -527,7 +544,9 @@
     }
 
     // The request is fired off the player's own timers, so poll briefly.
-    for (let i = 0; i < 30 && !potParams; i++) await sleep(100);
+    // Short: this sits in front of the spinner, and the fallback strategies
+    // still run if no token arrives.
+    for (let i = 0; i < 40 && !potParams; i++) await sleep(100);
 
     try {
       player.setOption('captions', 'track', previous || {});
@@ -592,7 +611,7 @@
     // related, not a property of the video, and the fix is different.
     throw errored(
       'NO_TRANSCRIPT',
-      'YouTube listed captions for this video but refused to serve the text. Reload the page, or open the video’s own transcript panel once, then try again.'
+      'YouTube only releases caption text while the video is playing. Press play, give it a second, then try again — or open the video’s own transcript panel once and retry.'
     );
   }
 

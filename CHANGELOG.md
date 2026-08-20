@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.1
+
+### Fixed
+- The panel could sit on "Reading transcript…" indefinitely. Wrapping
+  `window.fetch` on YouTube's page broke requests made by YouTube itself, so
+  every strategy waited out its full timeout. Only XMLHttpRequest is watched
+  now, which is what the player actually uses.
+- The caption token is only issued while the video is playing. Asking for it on
+  a paused player waited for a request that was never going to be made; it now
+  returns at once and the message says to press play and retry.
+
 ## 0.2.0
 
 ### Fixed
