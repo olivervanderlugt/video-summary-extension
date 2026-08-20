@@ -221,3 +221,8 @@ can catch it mid-flight and press Stop.
 It is a development tool, not a test suite — it does not assert, it lets you
 look. The assertions live in `test/`, and the browser-only checks live in
 [docs/manual-qa.md](docs/manual-qa.md).
+
+`dev/` is inert inside the loaded extension: `manifest.json` does not reference
+it and the extension declares no `web_accessible_resources`, so no page can
+reach those files. Delete the folder before packaging for a store listing if you
+would rather not ship it at all.

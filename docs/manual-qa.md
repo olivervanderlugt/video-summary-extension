@@ -5,6 +5,14 @@ serves a caption track, whether Chrome grants the host permission, or whether
 the panel lands in the right column. Run this list against a real browser
 before calling a change done.
 
+**Covered by `dev/harness.html` already** — re-run it (`python3 dev/serve.py`)
+rather than re-checking these by hand: mounting the button and panel, transcript
+parsing into cues, streaming render, timestamp seeking, the Ask thread, mode
+selection, the partial-transcript notice, Stop, the summary cache, and clearing
+state on SPA navigation. What the harness cannot tell you is whether YouTube
+still serves a caption track, whether Chrome grants the host permission, and
+whether a real provider request succeeds — everything below is about that.
+
 Load the extension: `chrome://extensions` → Developer mode → Load unpacked →
 the repo folder. Re-run this whole list after any change to `manifest.json`,
 the service worker, or the content scripts.
