@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 ### Fixed
 - Caption text could not be retrieved at all on most videos. YouTube's endpoint
