@@ -5,11 +5,11 @@ const DEFAULTS = {
   keys: { anthropic: '', openai: '', gemini: '', openrouter: '', compatible: '' },
   model: '',
   baseUrl: '',
-  lang: 'en',
+  lang: '', // Automatic — must match DEFAULTS.lang in the worker
   defaultMode: 'detailed',
   autoRun: false,
   openPanel: false,
-  maxTokens: 4000,
+  maxTokens: 12000, // mirrors DEFAULTS in the worker; see the note there
   // Set once the first-visit walkthrough has been finished or skipped.
   onboardingDone: false,
 };

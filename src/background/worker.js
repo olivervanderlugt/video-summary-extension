@@ -19,16 +19,31 @@ import {
 import { renderMarkdown, linkifyTimestamps, foldSection } from '../lib/markdown.js';
 import { createVerifier, challengeFor, authUrl, codeFromRedirect } from '../lib/pkce.js';
 
+// Bumped when a stored setting has to be corrected in place. Raising a default
+// only ever reaches a FRESH install — everyone else has the old value written
+// into storage, where the spread below happily preserves it.
+const SETTINGS_VERSION = 1;
+
 const DEFAULTS = {
   provider: 'openrouter', // sign-in beats hunting for an API key
   keys: { anthropic: '', openai: '', gemini: '', openrouter: '', compatible: '' },
   model: '',
   baseUrl: '',
-  lang: 'en',
+  // Empty means Automatic — the first option in the settings page's language
+  // select. `pickTrack` reads it as "no preference" and takes whatever the video
+  // offers; 'en' here pinned every fresh install to English while the UI showed
+  // Automatic, so a Dutch video was summarized off an English auto-translation.
+  lang: '',
   defaultMode: 'detailed',
   autoRun: false,
   openPanel: false, // show the panel expanded on every watch page
-  maxTokens: 4000,
+  // A cap, not a spend: you pay for what the model writes, so a generous
+  // ceiling costs nothing on a model that answers in 800 tokens. 4000 was too
+  // low for the reasoning models that are now common — the limit counts the
+  // model's thinking, so the budget ran out before the summary was written and
+  // the run failed with nothing to show. See NO_BUDGET in streamCompletion.
+  maxTokens: 12000,
+  settingsVersion: SETTINGS_VERSION,
 };
 
 // Past this many characters a single request stops being a good idea: some
@@ -36,15 +51,52 @@ const DEFAULTS = {
 // quietly ignores the middle of the video. Above the threshold we map-reduce.
 const SINGLE_PASS_CHARS = 100_000;
 // The provider codes worth one more attempt; everything else is a real answer.
-const RETRYABLE = new Set(['rate_limit', 'server']);
+// NETWORK is here because a fetch that throws never reached the provider: nothing
+// was generated, nothing was billed, and nothing was streamed into the buffer. The
+// header timeout below deliberately does NOT share this code — that request may
+// well be running and billed on the other end, and retrying it pays twice.
+const RETRYABLE = new Set(['rate_limit', 'server', 'NETWORK']);
 // Long enough that a rate limit has a chance to clear, short enough that a user
 // waiting on a summary does not think it hung.
 const RETRY_DELAY_MS = 1500;
 const RENDER_INTERVAL_MS = 80;
 
+/**
+ * One-time repairs to already-stored settings. Deliberately narrow: this may
+ * only undo a bad default this extension itself shipped, never overwrite a
+ * choice the user actually made.
+ */
+function migrate(s) {
+  // 4000 was our own default until 0.4.0 and it is below the floor for a
+  // reasoning model, whose thinking is billed against the same ceiling: the
+  // budget ran out before the summary began and the run failed with nothing to
+  // show. Anyone sitting on exactly the old default never picked it. It is a
+  // ceiling, not a spend, so raising it costs nothing on a model that answers
+  // in 800 tokens. A number they changed themselves is left alone.
+  if (Number(s.maxTokens) === 4000) s.maxTokens = DEFAULTS.maxTokens;
+  s.settingsVersion = SETTINGS_VERSION;
+  return s;
+}
+
 async function loadSettings() {
   const stored = await chrome.storage.local.get('settings');
-  const s = { ...DEFAULTS, ...(stored.settings || {}) };
+  // Read the version off STORAGE, never off the merged object: DEFAULTS carries
+  // the current version, so merging first makes every old install look already
+  // migrated and the repair silently never runs.
+  const storedVersion = Number(stored.settings && stored.settings.settingsVersion) || 0;
+  const needsMigration = !!stored.settings && storedVersion < SETTINGS_VERSION;
+
+  let s = { ...DEFAULTS, ...(stored.settings || {}) };
+  if (needsMigration) {
+    s = migrate(s);
+    // Write the repair back, or it runs on every load — and would then keep
+    // overriding a 4000 the user has since chosen on purpose.
+    try {
+      await chrome.storage.local.set({ settings: { ...stored.settings, ...s } });
+    } catch {
+      /* storage full or unavailable: this run still has the fixed value */
+    }
+  }
   s.keys = { ...DEFAULTS.keys, ...(s.keys || {}) };
   return s;
 }
@@ -141,7 +193,17 @@ async function* streamCompletion({ settings, adapter, system, messages, signal, 
     // A timeout abort reported as CANCELLED would paint a silent empty done,
     // which is worse than the hang it replaces.
     if (headersTimer.signal.aborted) {
-      throw new AppError('NETWORK', 'The provider did not respond within a minute. Try again, or check the base URL if you set one.');
+      throw new AppError('TIMEOUT', 'The provider did not respond within a minute. Try again, or check the base URL if you set one.');
+    }
+    // Chrome rejects a failed connection with a bare TypeError, which carries no
+    // `code` — so withRetry matched nothing and a dropped wifi packet killed a run
+    // that a second attempt would have completed. Give it the code the panel and
+    // the retry both read. Never a CANCELLED abort: that is a DOMException.
+    if (err instanceof TypeError) {
+      throw new AppError(
+        'NETWORK',
+        'Could not reach the AI provider. Check your connection, and if you use a custom base URL, that it is correct and permitted.'
+      );
     }
     throw err;
   } finally {
@@ -173,6 +235,19 @@ async function* streamCompletion({ settings, adapter, system, messages, signal, 
   if (truncated) onTruncated();
 
   if (!got) {
+    // Nothing came back AND the provider says it stopped at the length limit.
+    // That is a specific, common situation with a reasoning model: the answer
+    // budget counts thinking tokens, so the model can spend the entire limit
+    // reasoning and emit no answer at all. Measured 2026-08-21 on a real run —
+    // fifteen seconds of generation, `finish_reason: length`, zero content
+    // deltas. Saying "the model refused the content" there sends the user to
+    // look for a refusal that never happened.
+    if (truncated) {
+      throw new AppError(
+        'NO_BUDGET',
+        'The model used its whole answer budget before writing anything — usual with a reasoning model. Raise "Maximum answer length" in settings, or pick a model that does not reason.'
+      );
+    }
     throw new AppError(
       'EMPTY',
       'The provider accepted the request but returned no text. This usually means the model refused the content or the request was too long.'
@@ -216,6 +291,8 @@ class Session {
     this.buffer = '';
     this.lastRender = 0;
     this.renderTimer = null;
+    this.mode = null; // the mode this run used; html() folds on it
+    this.keepalive = null;
   }
 
   /**

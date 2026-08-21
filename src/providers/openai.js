@@ -1,6 +1,6 @@
 // Also backs the `compatible` provider (OpenRouter / Groq / LM Studio / Ollama /
 // corporate proxies), which is why every URL is derived from baseUrl.
-import { errorDetail, statusError, streamError } from './errors.js';
+import { errorDetail, statusError, streamError, ProviderError } from './errors.js';
 
 export const id = 'openai';
 export const label = 'OpenAI';
@@ -22,8 +22,13 @@ const DEFAULT_BASE = 'https://api.openai.com/v1';
  */
 function normalise(baseUrl, requiresBaseUrl) {
   const trimmed = (baseUrl || '').trim().replace(/\/+$/, '');
+  // Unreachable in the extension — activeBaseUrl() in the worker fails closed
+  // first — and kept anyway: this is the adapter's own trust boundary, and the
+  // day another caller skips that check a bare Error would land on UNKNOWN,
+  // which the panel has no fix-it copy for. ProviderError carries the code.
   if (!trimmed && requiresBaseUrl) {
-    throw new Error(
+    throw new ProviderError(
+      'NO_BASE_URL',
       'No Base URL is set for this provider. Open the extension settings and enter the Base URL of your OpenAI-compatible server — nothing is sent until you do.'
     );
   }

@@ -420,8 +420,32 @@ html[dark] .vse-textbtn.vse-primary {
 
 .vse-error-actions {
   display: flex;
+  flex-wrap: wrap; /* Try again + the two feedback controls, in a 400px column */
   gap: 8px;
   margin-top: 12px;
+}
+
+/* The report link is a button in every way except the tag. It navigates, so it
+   stays an <a>: the destination — diagnostics and all — is readable in the
+   status bar before it is clicked. */
+a.vse-textbtn {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+/* Where the diagnostics land when the clipboard refuses them. Inherits
+   .vse-input, so it is the same field as the Ask box in both themes. */
+.vse-diagbox {
+  width: 100%;
+  margin-top: 10px;
+  min-height: 100px;
+  max-height: 200px;
+  font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.2rem;
+  line-height: 1.5;
+  white-space: pre;
+  resize: vertical;
 }
 
 /* ------------------------------------------------------------------- ask */

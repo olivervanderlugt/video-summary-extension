@@ -170,7 +170,7 @@
       installChromeShim({ autoRun: false, defaultMode: 'detailed' });
       history.replaceState({}, '', `?v=${videoId}`);
 
-      for (const src of ['/src/content/inject.js', '/src/content/content.js']) {
+      for (const src of ['/src/content/inject.js', '/src/lib/diagnostics.js', '/src/content/content.js']) {
         await new Promise((resolve, reject) => {
           const s = document.createElement('script');
           s.src = src;

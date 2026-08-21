@@ -29,7 +29,7 @@
     },
     {
       "matches": ["https://www.youtube.com/*"],
-      "js": ["src/content/content.js"],
+      "js": ["src/lib/diagnostics.js", "src/content/content.js"],
       "css": ["src/content/panel.css"],
       "run_at": "document_idle"
     }

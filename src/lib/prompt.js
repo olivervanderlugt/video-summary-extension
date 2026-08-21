@@ -180,7 +180,10 @@ function chaptersBlock(chapters) {
   const list = Array.isArray(chapters) ? chapters.filter((c) => c && c.label) : [];
   if (!list.length) return '';
   const body = list.map((c) => `- [${formatTimestamp(c.t)}] ${clean(c.label)}`).join('\n');
-  return `Chapters (the video's own, use these for the Walkthrough):\n${body}`;
+  // No mode emits a Walkthrough any more, which is what this line used to point
+  // chapters at. They still earn their place: they are the only timestamps the
+  // model may cite that the transcript does not contain.
+  return `Chapters (the video's own — cite these titles and times where they mark the point being made):\n${body}`;
 }
 
 function transcriptBlock(text) {

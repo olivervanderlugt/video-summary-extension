@@ -167,8 +167,8 @@ export function stripDelimiters(text) {
  * from 30s to 15s costs +2% characters, and to 10s costs +3.6% — the old
  * comment here claimed per-cue markers "triple the token count", which is out
  * by roughly 14x. 15 halves the citation drift: a click on [4:30] used to land
- * a median 15s before the moment it cited, worst case 27.5s.
- * count and shred sentences.
+ * a median 15s before the moment it cited, worst case 27.5s. Closer than 15 and the
+ * markers start to pad the token count and shred sentences across lines.
  * @param {Cue[]} cues
  * @param {{interval?:number}} [opts]
  */

@@ -79,10 +79,6 @@
       action: 'options',
       body: 'The OpenAI-compatible provider needs the address of your server. Nothing is sent until you enter one.',
     },
-    bad_response: {
-      title: "The provider sent something unreadable",
-      body: 'That address answered, but not with what an AI provider sends. Check the server address in settings.',
-    },
     // These five are the codes the provider adapters emit verbatim. They are
     // lowercase on purpose — matching them is what puts the "Open settings"
     // button under a rejected key, which is the error where it is the whole fix.
@@ -92,7 +88,18 @@
     model: { title: 'Unknown model', action: 'options', body: 'Pick a different model in settings.' },
     server: { title: 'The provider is having trouble', body: 'Wait a moment and try again.' },
     NETWORK: { title: "Couldn't reach the provider", body: 'Check your connection and try again.' },
+    // Separate from NETWORK on purpose: the request went out and may still be
+    // running (and billed) at the provider, so this one is never retried for you.
+    TIMEOUT: { title: 'The provider did not answer', body: 'Wait a moment and run it again.' },
     EMPTY: { title: 'The provider returned nothing', body: 'Run it again — this is usually transient.' },
+    // Distinct from EMPTY on purpose: this one is not transient and running it
+    // again changes nothing. The answer budget counts a reasoning model's
+    // thinking, so the limit ran out before any summary was written.
+    NO_BUDGET: {
+      title: 'The model ran out of answer budget',
+      body: 'It spent the whole limit thinking before writing anything, which reasoning models do. Raise "Maximum answer length" in settings, or pick a model that does not reason.',
+      action: 'options',
+    },
     DISCONNECTED: { title: 'The extension restarted mid-run', body: 'Chrome shut the background worker down. Run it again.' },
     UNKNOWN: { title: 'Something went wrong', body: 'Try again.' },
   };
@@ -101,7 +108,11 @@
 
   const state = {
     videoId: null,
-    mode: 'brief',
+    // The fallback when `getSettings` never answers (worker asleep, first paint).
+    // It must be DEFAULTS.defaultMode from the worker and the options page: a panel
+    // that quietly summarizes in a different style than the settings page claims is
+    // a wrong summary the user has no way to explain.
+    mode: 'detailed',
     expanded: false,
     askOpen: false,
     running: false,
@@ -114,6 +125,8 @@
     text: '', // cumulative plain text from the worker (used for copy + fallback paint)
     html: '', // cumulative worker-rendered, already-escaped HTML
     transcript: null, // { videoId, meta, tracks, json3, trackInfo }
+    trackCount: null, // caption tracks the page listed; null = never got that far
+    strategy: null, // which route the page found the transcript by, if it did
     thread: [], // [{role:'user'|'assistant', content}]
     autoRun: false,
   };
@@ -584,12 +597,97 @@
     box.setAttribute('role', 'note');
     box.appendChild(node('div', 'vse-error-title', info.title));
     // The worker writes user-facing sentences; prefer its wording when it has one.
-    box.appendChild(node('div', 'vse-error-body', (!info.calm && message) || info.body || message || ''));
+    const body = (!info.calm && message) || info.body || message || '';
+    box.appendChild(node('div', 'vse-error-body', body));
     const row = node('div', 'vse-error-actions');
     if (info.action === 'options') row.appendChild(textButton('Open settings', () => openOptions(), 'vse-primary'));
     if (!info.calm) row.appendChild(textButton('Try again', () => start({ force: true })));
+    // Errors only — a summary that worked must never nag. Not under the settings
+    // errors either: those are fixed by the button to the left, so an issue about
+    // one is noise for the maintainer and a dead end for the reporter.
+    // Guarded: renderError is the last thing standing between a failed run and a
+    // blank panel, so a fault while building the OPTIONAL feedback affordance
+    // must not take the error message down with it.
+    if (info.action !== 'options') {
+      try {
+        addFeedback(box, row, code, info.title, body);
+      } catch {
+        /* no feedback buttons this time; the error itself still renders */
+      }
+    }
     if (row.childElementCount) box.appendChild(row);
     el.output.appendChild(box);
+  }
+
+  /**
+   * Copy-diagnostics and a pre-filled issue link. Neither sends anything: one
+   * writes to the clipboard, the other is a link the user can read in the status
+   * bar before clicking. The fields are an allowlist in src/lib/diagnostics.js —
+   * add one there, on purpose, or it does not leave this machine.
+   */
+  function addFeedback(box, row, code, title, body) {
+    // chrome.* throws outright once the extension context is invalidated (an
+    // update or a reload while the page stayed open), and the error renderer is
+    // the last thing that may die on that.
+    const safe = (fn, fallback) => {
+      try {
+        return fn() || fallback;
+      } catch {
+        return fallback;
+      }
+    };
+    const diag = globalThis.VSE_DIAG.buildDiagnostics({
+      version: safe(() => chrome.runtime.getManifest().version, ''),
+      code,
+      title,
+      message: body,
+      videoId: state.videoId,
+      durationSeconds: state.transcript?.meta?.duration,
+      trackCount: state.trackCount,
+      strategy: state.strategy,
+      userAgent: navigator.userAgent,
+      language: safe(() => chrome.i18n.getUILanguage(), navigator.language),
+      timestamp: new Date().toISOString(),
+    });
+    const text = globalThis.VSE_DIAG.formatDiagnostics(diag);
+
+    const copy = textButton('Copy diagnostics', () => copyDiagnostics(box, copy, text));
+    row.appendChild(copy);
+
+    const link = node('a', 'vse-textbtn', 'Report on GitHub');
+    link.href = globalThis.VSE_DIAG.issueUrl(diag);
+    link.target = '_blank';
+    link.rel = 'noreferrer noopener'; // same as the options page's provider links
+    row.appendChild(link);
+  }
+
+  /** writeText rejects without focus or a user gesture, and a diagnostics block
+   *  that silently went nowhere is worse than no button. On a refusal the text
+   *  goes into a selectable box instead, and the label stops claiming a copy. */
+  function copyDiagnostics(box, btn, text) {
+    const reveal = () => {
+      let ta = box.querySelector('.vse-diagbox');
+      if (!ta) {
+        ta = node('textarea', 'vse-input vse-diagbox');
+        ta.readOnly = true;
+        ta.setAttribute('aria-label', 'Diagnostics — select and copy');
+        ta.value = text;
+        box.appendChild(ta);
+      }
+      ta.focus();
+      ta.select();
+      btn.textContent = 'Select and copy';
+    };
+    try {
+      navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = 'Copied';
+        setTimeout(() => {
+          btn.textContent = 'Copy diagnostics';
+        }, 1200);
+      }, reveal);
+    } catch {
+      reveal();
+    }
   }
 
   function renderIdle() {
@@ -744,9 +842,11 @@
     }
   }
 
-  /** The worker picked a track; the page fetches it. The page may answer with
-   *  raw json3 (strategy "captions") or with ready-made cues (strategies
-   *  "panel"/"innertube"); the worker accepts either. This file parses neither. */
+  /** The worker picked a track; the page fetches it. The page may answer with raw
+   *  json3 or with ready-made cues, depending on which strategy worked; the worker
+   *  accepts either and this file parses neither. Which strategy it was is never
+   *  relayed onward — nothing downstream branches on it. It is kept on `state`
+   *  for the diagnostics block a failed run can offer, and for nothing else. */
   async function onFetchTrack(msg, runId) {
     // `begin` and `run` can be posted back to back when we already hold cues;
     // the worker still answers the `begin` with a fetchTrack. Acting on it would
@@ -782,6 +882,7 @@
           trackInfo: res.trackInfo || msg.trackInfo || null,
         };
         state.transcript = payload;
+        state.strategy = res.strategy || state.strategy;
       }
       if (!fresh(runId)) return;
       busyStatus('Summarizing…');
@@ -938,6 +1039,10 @@
     // the <video> element's own duration is NaN until its metadata loads.
     if (head.meta) t.meta = head.meta;
     state.transcript = t;
+    // Read by nothing but the diagnostics block: how many caption tracks the
+    // page listed, and which route it got there by. Never sent anywhere.
+    state.trackCount = Array.isArray(head.tracks) ? head.tracks.length : null;
+    state.strategy = head.strategy || null;
 
     const port = ensurePort();
     if (!port) return;
@@ -1104,6 +1209,8 @@
     state.runSeq += 1;
     state.videoId = id;
     state.transcript = null;
+    state.trackCount = null;
+    state.strategy = null;
     state.thread = [];
     state.text = '';
     state.html = '';

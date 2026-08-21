@@ -114,6 +114,10 @@ test('chapters appear when supplied and are absent when not', () => {
 
   const empty = buildSummaryPrompt({ meta: { ...META, chapters: [] }, transcriptText: TRANSCRIPT });
   assert.equal(/Chapters/.test(empty), false);
+
+  // The chapters line used to hand them to a Walkthrough section that no mode
+  // asks for any more — an instruction to fill a heading the contract forbids.
+  assert.equal(/Walkthrough/.test(withCh), false);
 });
 
 test('every mode is distinct and every mode is reachable', () => {

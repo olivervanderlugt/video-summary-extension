@@ -104,6 +104,17 @@ test('getSettings never hands an API key to the content script', async () => {
   assert.ok(!JSON.stringify(reply).includes('SECRET'), 'a key leaked into the reply');
 });
 
+test('a fresh install gets the defaults the settings page advertises', async () => {
+  // Nothing stored yet, so DEFAULTS is the whole answer. Both of these are
+  // mirrored by hand in src/options/options.js and src/content/content.js — a
+  // drift here means the panel summarizes in a style, or off a caption track,
+  // that the settings page never said it would.
+  storage = {};
+  const reply = await send({ type: 'getSettings' });
+  assert.equal(reply.defaultMode, 'detailed');
+  assert.equal(reply.lang, '', 'the language select shows Automatic first; the default must be it');
+});
+
 test('getSettings reports a missing key without revealing anything', async () => {
   setSettings({ keys: { anthropic: '', openai: '', gemini: '', compatible: '' } });
   const reply = await send({ type: 'getSettings' });
@@ -545,6 +556,49 @@ test('a stream that yields no text is an error, not an empty summary', async () 
   assert.equal(end.code, 'EMPTY');
 });
 
+test('an install still carrying the old 4000 answer budget is repaired once, and only once', async () => {
+  // Raising a default only reaches a fresh install; everyone else has the old
+  // number written into storage. 4000 was OUR bad default, so it gets undone —
+  // but a number the user typed themselves must survive, and the repair must
+  // not re-run and undo a later choice.
+  setSettings({ provider: 'openai', maxTokens: 4000 });
+  delete storage.settings.settingsVersion;
+  const first = stubFetch(() => streamed(sseBody('ok')));
+  const a = openPort();
+  a.port._recv({ type: 'run', cues: [cue(0, 'hello')], trackInfo: { languageCode: 'en' } });
+  await settle(a.posted);
+
+  assert.equal(JSON.parse(first[0].body).max_completion_tokens, 12000, 'the old default should have been raised');
+  assert.equal(storage.settings.maxTokens, 12000, 'and written back, or it repeats every load');
+  assert.ok(storage.settings.settingsVersion >= 1, 'the repair must record that it ran');
+
+  // Now the user deliberately picks 4000 again. The migration has already run,
+  // so it must be left alone.
+  storage.settings.maxTokens = 4000;
+  const second = stubFetch(() => streamed(sseBody('ok')));
+  const b = openPort();
+  b.port._recv({ type: 'run', cues: [cue(0, 'hello')], trackInfo: { languageCode: 'en' } });
+  await settle(b.posted);
+  assert.equal(JSON.parse(second[0].body).max_completion_tokens, 4000, 'a deliberate 4000 must not be overridden');
+});
+
+test('a reasoning model that thinks past its budget says so, instead of blaming a refusal', async () => {
+  // Measured on a real run: fifteen seconds of generation, finish_reason
+  // "length", and not one content delta — the answer limit counts the model's
+  // thinking. EMPTY's copy sends the user hunting for a refusal that never
+  // happened, and tells them to run it again, which cannot help.
+  setSettings({ provider: 'openai' });
+  stubFetch(() => streamed(sseBody({ choices: [{ delta: {}, finish_reason: 'length' }] })));
+  const { port, posted } = openPort();
+
+  port._recv({ type: 'run', cues: [cue(0, 'hello')], trackInfo: { languageCode: 'en' } });
+  const end = await settle(posted);
+
+  assert.equal(end.type, 'error', `expected an error, got ${JSON.stringify(end)}`);
+  assert.equal(end.code, 'NO_BUDGET');
+  assert.match(end.message, /Maximum answer length/);
+});
+
 test('a rejected key is reported as an auth problem', async () => {
   setSettings({ provider: 'openai' });
   stubFetch(() => ({ ok: false, status: 401, text: async () => '{"error":{"message":"bad key"}}' }));
@@ -622,6 +676,42 @@ test('a provider error mid-stream fails the run instead of caching half a summar
 
   assert.equal(end.type, 'error', `a broken stream finished as ${JSON.stringify(end)}`);
   assert.ok(!posted.some((m) => m.type === 'done'), 'a half summary was cached as complete');
+});
+
+test('a dropped connection is retried once, and the answer is not doubled', async () => {
+  // Chrome rejects a failed connection with a bare TypeError. Nothing reached the
+  // provider, so nothing was billed and nothing was streamed — the one network
+  // failure a second attempt can fix. Before this it carried no `code` and killed
+  // the run outright.
+  setSettings({ provider: 'openai' });
+  const seen = stubFetch((n) => {
+    if (n === 0) throw new TypeError('Failed to fetch');
+    return streamed(sseBody('## TL;DR\n\n', 'It held.'));
+  });
+  const { port, posted } = openPort();
+
+  port._recv({ type: 'run', cues: [cue(0, 'hello')], trackInfo: { languageCode: 'en' } });
+  const end = await settle(posted);
+
+  assert.equal(end.type, 'done', `the retry never happened: ${JSON.stringify(end)}`);
+  assert.equal(seen.length, 2, 'expected exactly one more attempt');
+  // The buffer is rewound before each attempt; a stale half would paint twice.
+  assert.equal(end.text, '## TL;DR\n\nIt held.');
+});
+
+test('a connection that stays down fails the run rather than retrying forever', async () => {
+  setSettings({ provider: 'openai' });
+  const seen = stubFetch(() => {
+    throw new TypeError('Failed to fetch');
+  });
+  const { port, posted } = openPort();
+
+  port._recv({ type: 'run', cues: [cue(0, 'hello')], trackInfo: { languageCode: 'en' } });
+  const end = await settle(posted);
+
+  assert.equal(end.type, 'error', `expected an error, got ${JSON.stringify(end)}`);
+  assert.equal(end.code, 'NETWORK');
+  assert.equal(seen.length, 2, 'one attempt and one retry, no more');
 });
 
 test('the OpenAI-compatible provider with no base URL sends nothing at all', async () => {

@@ -100,7 +100,7 @@ function makePort(onToPage) {
 
     if (msg.type === 'run') {
       const cues = msg.cues?.length ? msg.cues : parseJson3(msg.json3);
-      note('run: strategy', msg.strategy, 'mode', msg.mode, 'cues', cues.length);
+      note('run: mode', msg.mode, 'cues', cues.length);
       if (!cues.length) {
         post({ type: 'error', code: 'TRACK_EMPTY', message: 'Empty caption track.' });
         return;
@@ -188,6 +188,8 @@ export function installChromeShim({ autoRun = false, defaultMode = 'detailed', h
         return { ok: false };
       },
       openOptionsPage: () => note('openOptionsPage'),
+      // The panel's Copy diagnostics reads the version from here.
+      getManifest: () => ({ version: '0.0.0-harness' }),
     },
     storage: {
       session: {
