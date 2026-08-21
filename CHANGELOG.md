@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.1
+
+### Changed
+- The TL;DR has a fixed shape rather than a word budget: 1-3 paragraphs, 1-5
+  sentences each, and **no sentence longer than 12 words**. One idea per
+  sentence, and stapling two thoughts together with "and" or a semicolon to
+  duck the count is called out as the same long sentence in disguise. Each
+  paragraph gets one job — what it concluded, then how it got there or what it
+  costs. Short sentences are what make a summary skimmable, and they leave no
+  room to hide a clause that says nothing.
+
 ## 0.5.0
 
 ### Changed

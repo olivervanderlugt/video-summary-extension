@@ -12,14 +12,14 @@ export const MODES = {
     label: 'Brief',
     hint: 'The TL;DR, nothing else',
     instruction:
-      'Write ONLY `## TL;DR`: 3-5 sentences. No other heading, no bullets, no list of points. Follow the TL;DR rules above to the letter — first sentence flat and under 20 words, people and things as subjects, no wrap-up line at the end. Every sentence must carry information a reader could act on or repeat; if a sentence would survive being deleted, delete it.'
+      'Write ONLY `## TL;DR`: 1-2 paragraphs. No other heading, no bullets, no list of points. Obey the shape above exactly — 1-5 sentences per paragraph, no sentence longer than 12 words, one idea per sentence. First sentence flat and conclusive, people and things as subjects, no wrap-up line at the end. Every sentence must carry information a reader could act on or repeat; if a sentence would survive being deleted, delete it.'
   },
   detailed: {
     id: 'detailed',
     label: 'Detailed',
     hint: 'A fuller TL;DR, with the points tucked underneath',
     instruction:
-      'Write `## TL;DR` as a substantial account — 6-10 sentences, in short paragraphs, not one block. Follow the TL;DR rules above to the letter: the opening sentence flat and under 20 words, people and things as subjects rather than "the video" or "the conversation", varied sentence lengths, and no wrap-up line at the end. Name who said what where two people disagree. Then `## Key points` as bullets, each opening with its `[m:ss]`. Be ruthless about which points earn a bullet: see the selection rule above. No other headings.'
+      'Write `## TL;DR` as 2-3 paragraphs. Obey the shape above exactly — 1-5 sentences per paragraph, no sentence longer than 12 words, one idea per sentence, never one block of text. The opening sentence flat and conclusive; people and things as subjects rather than "the video" or "the conversation"; varied lengths under the ceiling; no wrap-up line at the end. Name who said what where two people disagree. Then `## Key points` as bullets, each opening with its `[m:ss]`. Be ruthless about which points earn a bullet: see the selection rule above. No other headings.'
   },
   bullets: {
     id: 'bullets',
@@ -33,7 +33,7 @@ export const MODES = {
     label: 'Explain simply',
     hint: 'What it is about, and what it concludes',
     instruction:
-      'Two short paragraphs of plain prose under `## TL;DR`, and nothing else — no bullets, no other heading, no timestamps.\n\nThe first paragraph: what this video is about, in the way you would tell a friend who asked. Name the thing being discussed and why anyone cares.\n\nThe second: what it concludes. The actual answer, finding, or recommendation the video arrives at — not that it "explores" or "discusses" one.\n\nWrite for someone with no background. Where the speaker uses a term the reader would not know, say what it means in the same breath, in ordinary words. Short sentences. Do not simplify by becoming vague: a plain sentence still names the specific thing. Do not talk down, do not open with "Basically" or "Simply put", and do not add an analogy the speaker did not use unless a term cannot be explained without one.'
+      'Two short paragraphs of plain prose under `## TL;DR`, and nothing else — no bullets, no other heading, no timestamps.\n\nThe first paragraph: what this video is about, in the way you would tell a friend who asked. Name the thing being discussed and why anyone cares.\n\nThe second: what it concludes. The actual answer, finding, or recommendation the video arrives at — not that it "explores" or "discusses" one.\n\nWrite for someone with no background. Where the speaker uses a term the reader would not know, say what it means in the same breath, in ordinary words. Keep to the sentence ceiling above; the one place you may run past it is a sentence that defines a term, where breaking it in two would be worse. Do not simplify by becoming vague: a plain sentence still names the specific thing. Do not talk down, do not open with "Basically" or "Simply put", and do not add an analogy the speaker did not use unless a term cannot be explained without one.'
   },
   quotes: {
     id: 'quotes',
@@ -52,14 +52,32 @@ Markdown. The user turn names which headings to write; write those and no
 others. Never invent a section it did not ask for.
 
 ## TL;DR
-Prose, not bullets.
+Prose, not bullets. The shape is fixed, and it is not a suggestion:
+
+- **1 to 3 paragraphs.** Blank line between them. Never one wall of text.
+- **1 to 5 sentences per paragraph.**
+- **1 to 12 words per sentence. This is a hard ceiling.** Count them. A
+  thirteen-word sentence is wrong even if it reads well — split it in two, or
+  cut the half that carries less.
+
+Short sentences are the whole point. They are what makes a summary skimmable,
+and they make padding impossible to hide: there is no room for a clause that
+says nothing.
+
+One idea per sentence. Do not staple two thoughts together with "and", "which",
+"while" or a semicolon to stay under the count — that is the same long sentence
+wearing a disguise. Break it properly.
+
+Give each paragraph one job. The first says what the video concluded. A second,
+if there is one, says how it got there or what it costs. A third only if
+something genuinely does not fit the first two.
 
 The first sentence is the single most important thing the video says, stated
-flat, under 20 words, with no wind-up. Not what the video is about — what it
-says. If a reader read only that sentence they should have the answer.
+flat, with no wind-up. Not what the video is about — what it says. If a reader
+read only that sentence they should have the answer.
 
-Then the rest of it. Rules that are not negotiable, because breaking them is
-what makes a summary read as machine-written:
+The rest of the rules, not negotiable, because breaking them is what makes a
+summary read as machine-written:
 
 - **The subject of a sentence is a person or a thing, never the video.** Not
   "The conversation explores…", "The discussion centres on…", "The episode
@@ -70,8 +88,9 @@ what makes a summary read as machine-written:
   say. A summary that ends by summarising itself is padding.
 - **No participial wind-ups.** Never open a sentence with "Drawing on…",
   "Highlighting…", "Emphasising…", "Emphasizing…", "Noting that…", "Arguing that…".
-- **Vary the length.** At least one sentence under eight words. Sentences that
-  are all the same length are the clearest tell of all.
+- **Vary the length within the ceiling.** Some sentences of four words, some of
+  eleven. Sentences that are all the same length are the clearest tell of all,
+  and twelve identical twelve-word sentences are no better than one long one.
 - **Ban these verbs entirely**, in either spelling: highlights, emphasises,
   emphasizes, underscores, showcases, reflects, serves as, delves, explores,
   examines, centres on, centers on, revolves around, sheds light on, offers
