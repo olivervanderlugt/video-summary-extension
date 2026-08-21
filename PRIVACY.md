@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Last updated: 2026-08-20
+Last updated: 2026-08-21
 
 Video Summary is a browser extension that runs entirely on your machine. It has
 no server, no account, and no operator with access to your data.
@@ -37,6 +37,25 @@ that case — OpenRouter's and the underlying provider's.
 
 No video content, audio, or your YouTube account information is read or sent.
 The extension reads the caption track the video already publishes.
+
+## Reporting a problem
+
+When the panel shows an error it offers two controls, and neither of them sends
+anything on its own.
+
+**Copy diagnostics** puts a plain-text block on your clipboard: the extension
+version, the error code and the sentence the panel showed, the video's id and
+duration, how many caption tracks the page listed, which transcript strategy
+ran, your browser's user-agent string, your interface language, and the time.
+That list is the whole of it. It is built field by field from a fixed
+allowlist, so it cannot contain your API key, your custom server URL, the
+transcript, or the summary — and anything key-shaped in a provider's own error
+text is replaced with `[redacted]` before it reaches the block. Where it goes
+after that is up to you; nothing here transmits it.
+
+**Report on GitHub** is a link. It opens GitHub's new-issue form with those same
+details pre-filled, and nothing is submitted until you press GitHub's own
+button. The entire payload is in the URL, readable before you click it.
 
 ## The OpenRouter sign-in
 

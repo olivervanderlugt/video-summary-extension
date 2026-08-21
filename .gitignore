@@ -7,3 +7,6 @@ node_modules/
 
 # assets/icon*.png are generated from assets/icon.svg, but they are COMMITTED
 # on purpose — Chrome needs them at load time and there is no build step.
+
+# Store zips are build output — dev/package.sh regenerates them.
+video-summary-*.zip

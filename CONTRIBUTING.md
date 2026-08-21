@@ -46,6 +46,23 @@ mid-flight. `?tour=1` replays the first-run walkthrough.
 
 `dev/` is not part of the extension — the manifest does not reference it.
 
+## Measuring on real YouTube
+
+The harness cannot answer whether YouTube will hand over a transcript today.
+Two scripts are meant to be pasted into the console on a real watch page with
+the extension loaded:
+
+- `dev/hitrate.js` runs the real transcript path — the same two page messages
+  the panel sends — and prints which strategy won, how many cues it got and how
+  much of the runtime they cover. It never reaches a provider, so it costs
+  nothing. `vseHitRate.summary()` tallies every row collected in the tab.
+- `dev/diagnose.js` digs into the proof-of-origin token when the caption fetch
+  is the thing failing.
+
+Content scripts are read from disk when the extension loads, not per page load,
+so **reload the extension** in `brave://extensions` / `chrome://extensions`
+after editing `src/content/*` or you will be measuring the previous version.
+
 ## Tests
 
 `node --test`. Pure logic lives in `src/lib/` and is well covered; the service

@@ -45,12 +45,14 @@ show it.
 
 ## Transcript acquisition — the fragile part
 
-Test at least one video from each row. Note which strategy the panel reports.
+Test at least one video from each row. The panel does not surface which
+strategy won — read it off the console log, or check the network tab for an
+`api/timedtext` request (strategy `captions`) versus a `get_panel` one (panel
+scrape).
 
 - [ ] Video with **manual** captions in your preferred language
 - [ ] Video with **auto-generated** captions only
 - [ ] Video with **no** captions at all → says so calmly, does not read as a crash
-- [ ] Video with **chapters** → the Walkthrough section follows the real chapter titles
 - [ ] Video **longer than 2 hours** → map-reduce path, progress shows "section n of m"
 - [ ] **Live** stream → clear message, no hang
 - [ ] Age-restricted or members-only video → clear message, no hang
@@ -58,6 +60,11 @@ Test at least one video from each row. Note which strategy the panel reports.
 - [ ] Video offering **several caption tracks** (say English plus one other): set the language dropdown to the other one, summarize, and the summary comes back in that language — then set it back to English on the same video and it comes back in English
 - [ ] Same video on **Automatic**: it takes the English track if the video has one, and does not error when it does not
 - [ ] Pick a language the video does not offer → falls back rather than failing, and the summary is still of the right video
+- [ ] A video whose track's `baseUrl` carries **no** `exp=xpe`/`xpv` → the caption fetch succeeds without the ~5s token dance
+- [ ] Panel strategy on a **legacy**-DOM video (segments are `ytd-transcript-segment-renderer`) → transcript comes back complete
+- [ ] Panel strategy on a **modern**-DOM video (segments are `transcript-segment-view-model`) → transcript comes back complete, and no cue text begins with an accessibility label like "0 seconden"
+- [ ] Panel strategy on a **long** video (over 1h30) → every segment is picked up without scrolling the panel; spot-check that the last cue's timestamp is near the runtime
+- [ ] Open the transcript panel yourself, then summarize → the same transcript, no duplicate panel, no hang
 
 If the caption fetch returns HTTP 200 with an empty body, that is the
 proof-of-origin restriction, not a bug in the parser — confirm the panel falls

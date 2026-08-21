@@ -1,5 +1,64 @@
 # Changelog
 
+## 0.4.0
+
+### Fixed
+- **The transcript panel strategy never worked at all.** Three separate defects,
+  each enough on its own. The button search returned the `ytd-button-renderer`
+  wrapper rather than the `<button>` inside it — `querySelectorAll` answers in
+  document order, so the wrapper was always reached first, and clicking a
+  Polymer wrapper does nothing. The segment query asked only for
+  `ytd-transcript-segment-renderer`, but YouTube ships two generations of that
+  row and serves them per video; on a modern-layout video the query matched
+  nothing. And the panel element was given about 240ms to appear when it takes
+  roughly 400ms. Measured after the fix: 1,032 rows at full runtime coverage in
+  853ms, on a video that had been failing outright.
+- **Chapters were always empty.** They are not in the player response — a video
+  with fifteen chapters returns a response with no `playerOverlays` key at all.
+  They are read from `ytInitialData` now, and only when its own
+  `currentVideoEndpoint` names the video we were asked about, so a summary can
+  never be given the previous video's section titles.
+- A caption fetch that is known in advance to return nothing is no longer sent.
+  The `baseUrl` advertises whether it needs a proof-of-origin token (`exp=xpe`
+  or `exp=xpv`); without one, that request is 200 with an empty body and eight
+  seconds of the user's time.
+- A transient network error retries once, like a rate limit already did. It
+  previously failed the whole run. A request that passes the 60s header timeout
+  is deliberately NOT retried — it may still be running and billed.
+- An install carrying the old 4000 answer budget is repaired once on load, so
+  the raised ceiling reaches existing users and not only fresh installs. A value
+  the user set themselves is left alone.
+- A fresh install said its language was "Automatic" while the stored default was
+  English, and the panel's fallback summary style disagreed with the settings
+  page. Both now match what the UI shows.
+
+### Changed
+- **Two transcript strategies, not three.** `POST /youtubei/v1/get_transcript`
+  is removed: it answers 400 in every environment tried, including when
+  YouTube's own interface issues it. YouTube's transcript panel has moved to
+  `get_panel`; rather than chase the endpoint, the panel is driven directly.
+- **The panel is tried before the token dance, not after it.** It costs about
+  400ms, needs no token and does not care whether the video is playing, while
+  making the player mint a token costs about five seconds and often fails. The
+  order was the difference between a transcript and an error on a video whose
+  panel held 2,064 usable rows.
+- The panel scrape no longer scrolls. The panel renders every row at once —
+  verified at 43 minutes, 54 minutes and 1h49 — so the scroll loop cost a second
+  and a half per run and never had anything to collect. The completeness gate
+  that guards against a half-transcript stays.
+- Waits are bounded by the clock rather than by a count of sleeps. A tab that is
+  not visible has its timers clamped to about a second, which stretched a
+  four-second wait to forty in front of the spinner.
+
+### Added
+- When a run fails, the panel offers a diagnostics block to copy and a
+  pre-filled GitHub issue. Nothing is ever sent automatically — the field list
+  is an explicit allowlist, so the key, the transcript and the summary cannot
+  reach it.
+- `dev/hitrate.js`, pasted into the console, runs the real transcript path with
+  no provider call, so measuring the hit rate across many videos costs nothing.
+- `docs/store-listing.md` — the Chrome Web Store submission material.
+
 ## 0.3.0
 
 ### Changed

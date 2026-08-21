@@ -9,18 +9,18 @@ timestamp in the summary is a link that seeks the player**. A chatbot can tell
 you the interesting part is somewhere around eighteen minutes in. This puts you
 there.
 
-![The summary panel open beside a video, timestamps rendered as seek buttons](docs/screenshot.png)
+![The summary panel open beside a video, timestamps rendered as seek buttons](docs/screenshots/01-summary.jpg)
 
-<sub>Screenshot from `dev/harness.html` — the offline development harness, not a live YouTube page.</sub>
+<sub>A real summary on a live watch page. More in <a href="docs/screenshots/">docs/screenshots/</a>.</sub>
 
 ## In the panel
 
 - **Five summary styles**, switched from the dropdown in the panel header:
-  **Brief** (a TL;DR and up to five key points), **Detailed** (adds a
-  chapter-by-chapter walkthrough and a "worth watching?" verdict), **Bullets**
-  (nothing but a flat list), **Explain simply** (plain language, jargon
-  unpacked), and **Key quotes** (verbatim lines with a note on why each
-  matters). Each style is a separate summary and a separate request.
+  **Brief** (the TL;DR alone), **Detailed** (the TL;DR with key points folded
+  underneath it), **Bullets** (nothing but a flat list of points), **Explain
+  simply** (two plain paragraphs, no bullets and no timestamps), and **Key
+  quotes** (verbatim lines, at most six, with a note on why each matters). Each
+  style is a separate summary and a separate request.
 - **Ask** — the speech-bubble button opens a box under the summary for
   follow-up questions about the video. Answers cite `[m:ss]` timestamps and
   those seek the player too. It needs a finished summary to ask about, so it
@@ -58,7 +58,7 @@ with, output length, an auto-summarise toggle that is off by default, a base URL
 field for the OpenAI-compatible provider, and **Preferred caption language** —
 a dropdown with
 an "Automatic — whatever the video offers" entry and about two dozen named
-languages, set to English on a fresh install. It decides which caption track is
+languages, set to Automatic on a fresh install. It decides which caption track is
 used when a video offers several, and in doing so it usually decides which
 language the summary comes back in: the model is given the transcript and told
 what language it is in, and answers in kind. Nothing in the prompt hard-forces
