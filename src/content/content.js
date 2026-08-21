@@ -392,6 +392,12 @@
     // Pinned for the session: a later settings re-read must not silently pull
     // the mode back to the configured default under the user.
     state.modeChosen = true;
+    // And pinned for the next video, and the next browser start. The dropdown
+    // IS the default rather than a second setting shadowing the options page,
+    // so picking a style here changes the one the settings page shows too.
+    // Fire and forget: failing to remember a preference must never interrupt
+    // the thing the user is actually doing.
+    sendMessage({ type: 'setDefaultMode', mode: state.mode }).catch(() => {});
     if (!state.running) showCachedOrIdle();
   }
 

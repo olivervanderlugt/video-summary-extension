@@ -12,14 +12,14 @@ export const MODES = {
     label: 'Brief',
     hint: 'The TL;DR, nothing else',
     instruction:
-      'Write ONLY `## TL;DR`: 3-5 sentences saying what the video establishes and what follows from it. No other heading, no bullets, no list of points. Every sentence must carry information a reader could act on or repeat; if a sentence would survive being deleted, delete it.'
+      'Write ONLY `## TL;DR`: 3-5 sentences. No other heading, no bullets, no list of points. Follow the TL;DR rules above to the letter — first sentence flat and under 20 words, people and things as subjects, no wrap-up line at the end. Every sentence must carry information a reader could act on or repeat; if a sentence would survive being deleted, delete it.'
   },
   detailed: {
     id: 'detailed',
     label: 'Detailed',
     hint: 'A fuller TL;DR, with the points tucked underneath',
     instruction:
-      'Write `## TL;DR` as a substantial account — 6-10 sentences, in paragraphs — covering what the video establishes, how it gets there, and what follows from it. Then `## Key points` as bullets, each opening with its `[m:ss]`. Be ruthless about which points earn a bullet: see the selection rule above. No other headings.'
+      'Write `## TL;DR` as a substantial account — 6-10 sentences, in short paragraphs, not one block. Follow the TL;DR rules above to the letter: the opening sentence flat and under 20 words, people and things as subjects rather than "the video" or "the conversation", varied sentence lengths, and no wrap-up line at the end. Name who said what where two people disagree. Then `## Key points` as bullets, each opening with its `[m:ss]`. Be ruthless about which points earn a bullet: see the selection rule above. No other headings.'
   },
   bullets: {
     id: 'bullets',
@@ -52,9 +52,40 @@ Markdown. The user turn names which headings to write; write those and no
 others. Never invent a section it did not ask for.
 
 ## TL;DR
-Prose, not bullets. Start with the substance — never "This video...", "In this
-video the speaker...", or a restatement of the title. Say what the video
-establishes, not what it covers.
+Prose, not bullets.
+
+The first sentence is the single most important thing the video says, stated
+flat, under 20 words, with no wind-up. Not what the video is about — what it
+says. If a reader read only that sentence they should have the answer.
+
+Then the rest of it. Rules that are not negotiable, because breaking them is
+what makes a summary read as machine-written:
+
+- **The subject of a sentence is a person or a thing, never the video.** Not
+  "The conversation explores…", "The discussion centres on…", "The episode
+  examines…", "This segment highlights…". Tyson says X. The benchmark showed Y.
+  If you cannot name who or what, you have not understood the point yet.
+- **No wrap-up sentence at the end.** No "Ultimately", "Overall", "In essence",
+  "At its core", "The key takeaway is". Stop on the last real thing you have to
+  say. A summary that ends by summarising itself is padding.
+- **No participial wind-ups.** Never open a sentence with "Drawing on…",
+  "Highlighting…", "Emphasising…", "Emphasizing…", "Noting that…", "Arguing that…".
+- **Vary the length.** At least one sentence under eight words. Sentences that
+  are all the same length are the clearest tell of all.
+- **Ban these verbs entirely**, in either spelling: highlights, emphasises,
+  emphasizes, underscores, showcases, reflects, serves as, delves, explores,
+  examines, centres on, centers on, revolves around, sheds light on, offers
+  insights into, provides a look at, touches on, dives into, unpacks.
+- Concrete nouns beat abstract ones. "A 400k-line codebase", not "performance
+  considerations". If the speaker named a number, a company, a tool or a person,
+  use it.
+- Disagreement, doubt and hedging are content. If two people disagreed, say who
+  said what. A summary that flattens an argument into consensus is wrong, not
+  merely bland.
+
+Read it back before you finish. If it sounds like a press release, a LinkedIn
+post, or a book jacket, rewrite it as if you were telling one specific person,
+in a hurry, what was actually said.
 
 ## Key points
 Bullets. Every bullet begins with the timestamp where the point is made, as

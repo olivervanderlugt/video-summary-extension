@@ -10,6 +10,7 @@ import { sseEvents } from '../lib/sse.js';
 import { parseJson3, pickTrack, cuesToText } from '../lib/transcript.js';
 import { chunkCues } from '../lib/chunk.js';
 import {
+  MODES,
   buildSystemPrompt,
   buildSummaryPrompt,
   buildChunkPrompt,
@@ -840,6 +841,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       case 'signIn':
         answer(await signInWithOpenRouter());
         return;
+      // The panel's style dropdown IS the default, rather than a second setting
+      // shadowing the one on the options page. Picking a style in the panel and
+      // finding the next video back on the old one is the kind of small
+      // forgetfulness that makes a tool feel unfinished.
+      case 'setDefaultMode': {
+        const mode = String(msg.mode || '');
+        if (!Object.prototype.hasOwnProperty.call(MODES, mode)) {
+          answer({ ok: false, code: 'UNKNOWN_MODE', message: 'Not a summary style.' });
+          return;
+        }
+        const s = await loadSettings();
+        if (s.defaultMode !== mode) {
+          await chrome.storage.local.set({ settings: { ...s, defaultMode: mode } });
+        }
+        answer({ ok: true });
+        return;
+      }
       case 'openOptions':
         chrome.runtime.openOptionsPage();
         answer({ ok: true });

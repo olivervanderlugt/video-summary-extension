@@ -345,7 +345,24 @@
       //
       // The rows take roughly 400ms to arrive after the click, which is why this
       // waits rather than reading straight away.
-      const segments = await waitForSegments(PANEL_TIMEOUT);
+      let segments = await waitForSegments(PANEL_TIMEOUT);
+      if ((!segments || !segments.length) && openedByUs) {
+        // The click can land before YouTube is ready to answer it, and then it
+        // does nothing whatsoever — no panel, no request, no error. Measured on
+        // a watch page summarised the instant it finished loading: the button
+        // was present and clickable, the click was a no-op, and six seconds
+        // later there were still no rows. Pressing it again once the page has
+        // settled works.
+        //
+        // Only when no transcript panel is showing. If the first click DID open
+        // one and its rows are merely slow, a second click closes it.
+        const shownNow = Array.from(document.querySelectorAll(PANEL_SELECTOR)).some(shown);
+        const again = shownNow ? null : findTranscriptButton();
+        if (again) {
+          again.click();
+          segments = await waitForSegments(PANEL_TIMEOUT);
+        }
+      }
       if (!segments || !segments.length) return null;
 
       // Now the panel is knowable exactly: it is whichever one the rows are in.

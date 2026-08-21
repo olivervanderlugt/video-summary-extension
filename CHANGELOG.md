@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.5.0
+
+### Changed
+- **The TL;DR is rewritten to sound like a person.** The old one read as
+  machine-written and was genuinely hard to get through. The prompt now demands
+  a flat opening sentence under twenty words that says what the video concluded
+  rather than what it was about; forbids "the video", "the conversation" and
+  "the discussion" as the subject of a sentence, since a real subject forces you
+  to name who said what; bans the wrap-up line at the end, the participial
+  wind-up at the start, and a list of verbs that carry no information
+  ("highlights", "underscores", "explores", "delves", "sheds light on" and the
+  rest, in either spelling); and requires varied sentence lengths, because
+  uniform ones are the clearest tell. Disagreement now has to be attributed
+  instead of flattened into consensus.
+
+### Added
+- **The panel remembers which summary style you used.** Picking one in the
+  dropdown sets it as the default, so the next video opens the way you left it.
+  It is the same setting the options page shows — one preference, not two
+  shadowing each other.
+
+### Fixed
+- Pressing Summarize the instant a watch page loaded could fail with "YouTube
+  would not hand over the transcript". The click on YouTube's transcript button
+  landed before YouTube was ready to answer it and did nothing at all — no
+  panel, no request, no error. It is clicked once more if no rows arrive and no
+  transcript panel is open.
+
 ## 0.4.0
 
 ### Fixed
